@@ -1,0 +1,10 @@
+# Dependencias y sistema
+node_modules/
+.env
+.DS_Store
+
+# Datos reales de motores: viven solo en Supabase, nunca en el repositorio
+*.xlsx
+*.xls
+data/
+semilla*.sql
