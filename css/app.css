@@ -139,3 +139,5 @@ td.desc{max-width:260px;overflow:hidden;text-overflow:ellipsis}
 th.grp{text-align:center;cursor:default;border-bottom:1px solid var(--line)}
 thead tr:nth-child(2) th{top:39px}
 table{min-width:1300px}
+.side{overflow-y:auto}
+.faena{line-height:1.25}
