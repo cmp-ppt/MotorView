@@ -131,3 +131,4 @@ td.desc{max-width:260px;overflow:hidden;text-overflow:ellipsis}
 .upd{margin:10px 2px 0;color:var(--ink2);font-size:12px}
 .histl{display:flex;flex-direction:column;gap:8px}.hi{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;line-height:1.5}.hi small{display:block;color:var(--ink2)}
 @media(max-width:860px){.who>div{display:none}.who{padding:4px}}
+.tools[hidden]{display:none}

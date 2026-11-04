@@ -10,8 +10,23 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = (n, d = 0) => n == null ? '—' : n.toLocaleString('es-CL', {maximumFractionDigits: d});
 const count = (arr, f) => arr.reduce((m, x) => { const k = f(x); m[k] = (m[k] || 0) + 1; return m; }, {});
-const state = {view:'resumen', q:'', estado:new Set(), area:'', volt:'', montaje:'', kwMin:'', frame:'', tag:'', sort:'numero', dir:1, limit:80};
+const state = {view:'resumen', q:'', estado:new Set(), area:'', volt:'', montaje:'', kwMin:'', frame:'', tag:'', cols:{}, masOpen:false, sort:'numero', dir:1, limit:80};
 const canEdit = () => window.MV.user.rol !== 'consulta';
+
+/* Filtros por columna, como el autofiltro de la planilla: un desplegable por columna
+   (con sus valores reales y "(vacías)") y búsqueda por texto en las columnas de texto libre. */
+const FILTROS_COL = [
+  ['hp', 'HP', 'sel'], ['kw', 'kW', 'sel'], ['amp', 'Corriente (A)', 'sel'], ['voltTxt', 'Voltaje (V)', 'sel'],
+  ['rpm', 'Velocidad (rpm)', 'sel'], ['rodLibre', 'Rodam. lado libre', 'sel'], ['rodCarga', 'Rodam. lado carga', 'sel'],
+  ['cosFi', 'cos φ teórico', 'sel'], ['descripcion', 'Descripción contiene…', 'txt'], ['observaciones', 'Observaciones contiene…', 'txt']];
+const TIPO_COL = Object.fromEntries(FILTROS_COL.map(([k, , t]) => [k, t]));
+const VACIO = '__vacio__';
+const vacio = x => x == null || x === '';
+const cmpVal = (a, b) => typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'es', {numeric: true});
+const valoresDe = k => [...new Set(D.map(m => m[k]).filter(x => !vacio(x)))].sort(cmpVal);
+const etiquetaCol = (k, v) => typeof v === 'number' ? fmt(v, k === 'cosFi' ? 2 : 1) : v;
+const coincideCol = (m, k, v) => TIPO_COL[k] === 'txt' ? norm(m[k]).includes(norm(v).trim()) : v === VACIO ? vacio(m[k]) : String(m[k]) === v;
+const colsActivas = () => Object.values(state.cols).filter(Boolean).length;
 
 /* ---------- filtros ---------- */
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -28,6 +43,7 @@ function filtered() {
     (!state.kwMin || (m.kw ?? 0) >= +state.kwMin) &&
     (!state.frame || m.frame === state.frame) &&
     (!state.tag || norm(m.tag).includes(norm(state.tag).trim())) &&
+    Object.entries(state.cols).every(([k, v]) => !v || coincideCol(m, k, v)) &&
     q.every(t => m._s.includes(t)));
 }
 
@@ -104,7 +120,7 @@ function renderResumen() {
 }
 
 /* ---------- vista Inventario ---------- */
-const COLS = [['numero','N°'],['estado','Estado'],['tag','TAG'],['descripcion','Descripción'],['area','Ubicación'],['kw','kW'],['hp','HP'],['volt','V'],['rpm','RPM'],['amp','A'],['montaje','Montaje'],['frame','Frame']];
+const COLS = [['numero','N°'],['estado','Estado'],['tag','TAG'],['descripcion','Descripción'],['area','Ubicación'],['kw','kW'],['hp','HP'],['volt','V'],['rpm','RPM'],['amp','A'],['montaje','Montaje'],['frame','Frame'],['rodLibre','Rodam. libre'],['rodCarga','Rodam. carga'],['cosFi','cos φ']];
 function renderInventario() {
   const areas = [...new Set(D.map(m => m.area))].sort();
   const frames = [...new Set(D.map(m => m.frame).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', {numeric: true}));
@@ -118,14 +134,24 @@ function renderInventario() {
     <select class="chip ${state.kwMin ? 'on' : ''}" id="fKw"><option value="">Potencia</option>${[1, 5, 15, 37, 75, 200].map(k => `<option value="${k}" ${+state.kwMin === k ? 'selected' : ''}>≥ ${k} kW</option>`).join('')}</select>
     <select class="chip ${state.frame ? 'on' : ''}" id="fFrame"><option value="">Frame</option>${frames.map(a => `<option ${a === state.frame ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
     <input class="chip ${state.tag ? 'on' : ''}" id="fTag" placeholder="TAG contiene…" value="${esc(state.tag)}" style="width:150px">
+    <button class="chip ${colsActivas() ? 'on' : ''}" id="fMas">Más filtros${colsActivas() ? ' (' + colsActivas() + ')' : ''} ▾</button>
     <button class="clear" id="clr">Limpiar</button><span class="count" id="cnt"></span>
     <button class="btn sec" id="csv">Exportar CSV</button>
   </div>
+  <div class="tools" id="colsPanel" ${state.masOpen || colsActivas() ? '' : 'hidden'}>${FILTROS_COL.map(([k, l, t]) => t === 'txt'
+    ? `<input class="chip ${state.cols[k] ? 'on' : ''}" data-col="${k}" placeholder="${l}" value="${esc(state.cols[k] || '')}" style="width:190px">`
+    : `<select class="chip ${state.cols[k] ? 'on' : ''}" data-col="${k}"><option value="">${l}</option>${D.some(m => vacio(m[k])) ? `<option value="${VACIO}" ${state.cols[k] === VACIO ? 'selected' : ''}>${l}: (vacías)</option>` : ''}${valoresDe(k).map(x => `<option value="${esc(String(x))}" ${String(x) === state.cols[k] ? 'selected' : ''}>${esc(l + ': ' + etiquetaCol(k, x))}</option>`).join('')}</select>`).join('')}</div>
   <div class="card tablewrap"><table><thead><tr>${COLS.map(([k, l]) => `<th data-k="${k}" class="${state.sort === k ? 's' + (state.dir < 0 ? ' d' : '') : ''}">${l}</th>`).join('')}</tr></thead><tbody id="tb"></tbody></table><div id="mr"></div></div>`;
   $$('[data-e]', v).forEach(b => b.onclick = () => { const k = b.dataset.e; state.estado.has(k) ? state.estado.delete(k) : state.estado.add(k); state.limit = 80; renderInventario(); });
+  $('#fMas').onclick = () => { state.masOpen = !(state.masOpen || colsActivas()); if (!state.masOpen) state.cols = {}; renderInventario(); };
+  $$('[data-col]', v).forEach(el => {
+    const k = el.dataset.col;
+    if (el.tagName === 'INPUT') el.oninput = e => { state.cols[k] = e.target.value; state.limit = 80; e.target.classList.toggle('on', !!e.target.value); fillRows(); };
+    else el.onchange = e => { state.cols[k] = e.target.value; state.limit = 80; renderInventario(); };
+  });
   $('#fTag').oninput = e => { state.tag = e.target.value; state.limit = 80; e.target.classList.toggle('on', !!state.tag); fillRows(); };
   [['fArea','area'],['fVolt','volt'],['fMont','montaje'],['fKw','kwMin'],['fFrame','frame']].forEach(([id, k]) => $('#' + id).onchange = e => { state[k] = e.target.value; state.limit = 80; renderInventario(); });
-  $('#clr').onclick = () => { Object.assign(state, {q:'', estado:new Set(), area:'', volt:'', montaje:'', kwMin:'', frame:'', tag:''}); $('#gsearch').value = ''; renderInventario(); };
+  $('#clr').onclick = () => { Object.assign(state, {q:'', estado:new Set(), area:'', volt:'', montaje:'', kwMin:'', frame:'', tag:'', cols:{}}); $('#gsearch').value = ''; renderInventario(); };
   $('#csv').onclick = exportCSV;
   $$('th', v).forEach(th => th.onclick = () => { const k = th.dataset.k; state.dir = state.sort === k ? -state.dir : 1; state.sort = k; renderInventario(); });
   fillRows();
@@ -135,7 +161,7 @@ function fillRows() {
   rows.sort((a, b) => { const x = a[k], y = b[k]; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'es', {numeric: true})) * state.dir; });
   $('#cnt').textContent = `${rows.length} de ${D.length} motores`;
   const tb = $('#tb');
-  tb.innerHTML = rows.length ? rows.slice(0, state.limit).map(m => `<tr data-id="${m.id}"><td><b>${m.numero ?? '—'}</b></td><td><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span></td><td><span class="tag">${esc(m.tag) || '—'}</span></td><td class="desc" title="${esc(m.descripcion)}">${esc(m.descripcion) || '—'}</td><td>${esc(m.area)}</td><td class="num">${fmt(m.kw, 1)}</td><td class="num">${fmt(m.hp, 1)}</td><td class="num">${esc(m.voltTxt) || '—'}</td><td class="num">${fmt(m.rpm)}</td><td class="num">${fmt(m.amp, 1)}</td><td>${esc(m.montaje) || '—'}</td><td>${esc(m.frame) || '—'}</td></tr>`).join('') : `<tr><td colspan="12" class="empty">Sin resultados con estos filtros</td></tr>`;
+  tb.innerHTML = rows.length ? rows.slice(0, state.limit).map(m => `<tr data-id="${m.id}"><td><b>${m.numero ?? '—'}</b></td><td><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span></td><td><span class="tag">${esc(m.tag) || '—'}</span></td><td class="desc" title="${esc(m.descripcion)}">${esc(m.descripcion) || '—'}</td><td>${esc(m.area)}</td><td class="num">${fmt(m.kw, 1)}</td><td class="num">${fmt(m.hp, 1)}</td><td class="num">${esc(m.voltTxt) || '—'}</td><td class="num">${fmt(m.rpm)}</td><td class="num">${fmt(m.amp, 1)}</td><td>${esc(m.montaje) || '—'}</td><td>${esc(m.frame) || '—'}</td><td>${esc(m.rodLibre) || '—'}</td><td>${esc(m.rodCarga) || '—'}</td><td class="num">${fmt(m.cosFi, 2)}</td></tr>`).join('') : `<tr><td colspan="15" class="empty">Sin resultados con estos filtros</td></tr>`;
   $$('tr[data-id]', tb).forEach(r => r.onclick = () => openDrawer(+r.dataset.id));
   $('#mr').innerHTML = rows.length > state.limit ? `<button class="btn sec more" id="more">Mostrar más (${rows.length - state.limit} restantes)</button>` : '';
   const mb = $('#more'); if (mb) mb.onclick = () => { state.limit += 120; fillRows(); };
@@ -209,7 +235,7 @@ scrim.onclick = closeDrawer;
 /* ---------- navegación ---------- */
 const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Repuestos en bodega, reservados, en transporte y en reparación']};
 function go(view, filters) {
-  if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', montaje: '', kwMin: '', frame: '', tag: '', limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
+  if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', montaje: '', kwMin: '', frame: '', tag: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
   state.view = view;
   $$('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + view));
   $$('.nav').forEach(n => n.classList.toggle('on', n.dataset.view === view));
