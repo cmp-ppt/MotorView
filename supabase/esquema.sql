@@ -64,6 +64,12 @@ create table if not exists public.motorview_motores (
 create index if not exists motorview_motores_estado_idx on public.motorview_motores (estado);
 create index if not exists motorview_motores_area_idx   on public.motorview_motores (area);
 
+-- Criticidad del motor para la operación: A (crítico), B (importante) o C (normal).
+-- Se asigna desde la ficha; mientras no se asigne queda vacía.
+alter table public.motorview_motores add column if not exists criticidad text;
+alter table public.motorview_motores drop constraint if exists motorview_motores_criticidad_check;
+alter table public.motorview_motores add constraint motorview_motores_criticidad_check check (criticidad in ('A','B','C'));
+
 -- ------------------------------------------------------------
 -- HISTORIAL: una fila por campo cambiado. Solo lo escribe el disparador.
 -- ------------------------------------------------------------
@@ -102,6 +108,11 @@ begin
     values (old.id, quien, 'observaciones', old.observaciones, new.observaciones, new.motivo);
     cambio := true;
   end if;
+  if new.criticidad is distinct from old.criticidad then
+    insert into public.motorview_historial (motor_id, usuario, campo, anterior, nuevo, comentario)
+    values (old.id, quien, 'criticidad', old.criticidad, new.criticidad, new.motivo);
+    cambio := true;
+  end if;
 
   if not cambio then
     return old;                      -- nada cambió: no se toca ni se registra
@@ -118,22 +129,58 @@ create trigger motorview_motores_cambios
   for each row execute function public.motorview_motores_cambios();
 
 -- ------------------------------------------------------------
+-- REPARACIONES Y REBOBINADOS: una fila por intervención en un motor.
+--
+-- Solo se agregan; no se editan ni se borran desde la aplicación: una
+-- corrección se registra como una intervención nueva. Quién la registró
+-- y cuándo lo pone el servidor, no el navegador.
+-- ------------------------------------------------------------
+create table if not exists public.motorview_reparaciones (
+  id              bigint generated always as identity primary key,
+  motor_id        bigint not null references public.motorview_motores(id) on delete cascade,
+  fecha           date not null default current_date,
+  tipo            text not null check (tipo in ('Rebobinado','Cambio de rodamientos','Reparación mecánica','Mantención','Prueba eléctrica','Otro')),
+  taller          text check (char_length(taller) <= 100),
+  descripcion     text check (char_length(descripcion) <= 500),
+  resultado       text check (char_length(resultado) <= 300),     -- pruebas posteriores, garantía, etc.
+  registrado_por  text,
+  registrado_en   timestamptz not null default now()
+);
+create index if not exists motorview_reparaciones_motor_idx on public.motorview_reparaciones (motor_id, fecha desc, id desc);
+
+create or replace function public.motorview_reparaciones_sello()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.registrado_por := coalesce(auth.jwt() ->> 'email', current_user);
+  new.registrado_en  := now();
+  return new;
+end $$;
+
+drop trigger if exists motorview_reparaciones_sello on public.motorview_reparaciones;
+create trigger motorview_reparaciones_sello
+  before insert on public.motorview_reparaciones
+  for each row execute function public.motorview_reparaciones_sello();
+
+-- ------------------------------------------------------------
 -- PERMISOS Y RLS
 --
 -- Supabase da permisos amplios por defecto a `anon` y `authenticated`;
 -- se retiran y se devuelve solo lo necesario:
 --   · lectura: cualquier usuario con perfil activo (admin, mantenimiento, consulta)
---   · edición: admin y mantenimiento, y solo estado, área, observaciones y motivo
---   · sin insert ni delete desde la aplicación (la carga inicial se hace desde el SQL Editor)
+--   · edición: admin y mantenimiento, y solo estado, área, observaciones, criticidad y motivo
+--   · reparaciones: admin y mantenimiento pueden agregar; nadie edita ni borra desde la aplicación
+--   · sin insert ni delete de motores desde la aplicación (la carga inicial se hace desde el SQL Editor)
 --   · `anon` (sin login) no accede a nada
 -- ------------------------------------------------------------
 alter table public.motorview_perfiles  enable row level security;
 alter table public.motorview_motores   enable row level security;
 alter table public.motorview_historial enable row level security;
+alter table public.motorview_reparaciones enable row level security;
 
-revoke all on public.motorview_perfiles, public.motorview_motores, public.motorview_historial from anon, authenticated;
-grant select on public.motorview_perfiles, public.motorview_motores, public.motorview_historial to authenticated;
-grant update (estado, area, observaciones, motivo) on public.motorview_motores to authenticated;
+revoke all on public.motorview_perfiles, public.motorview_motores, public.motorview_historial, public.motorview_reparaciones from anon, authenticated;
+grant select on public.motorview_perfiles, public.motorview_motores, public.motorview_historial, public.motorview_reparaciones to authenticated;
+grant update (estado, area, observaciones, criticidad, motivo) on public.motorview_motores to authenticated;
+grant insert (motor_id, fecha, tipo, taller, descripcion, resultado) on public.motorview_reparaciones to authenticated;
 
 drop policy if exists motorview_perfiles_ver on public.motorview_perfiles;
 create policy motorview_perfiles_ver on public.motorview_perfiles
@@ -155,6 +202,16 @@ drop policy if exists motorview_historial_ver on public.motorview_historial;
 create policy motorview_historial_ver on public.motorview_historial
   for select to authenticated
   using (public.motorview_rol() is not null);
+
+drop policy if exists motorview_reparaciones_ver on public.motorview_reparaciones;
+create policy motorview_reparaciones_ver on public.motorview_reparaciones
+  for select to authenticated
+  using (public.motorview_rol() is not null);
+
+drop policy if exists motorview_reparaciones_agregar on public.motorview_reparaciones;
+create policy motorview_reparaciones_agregar on public.motorview_reparaciones
+  for insert to authenticated
+  with check (public.motorview_rol() in ('admin','mantenimiento'));
 
 -- ============================================================
 -- CÓMO DAR ACCESO A UNA PERSONA

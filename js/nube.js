@@ -8,7 +8,8 @@
 (function (global) {
   'use strict';
 
-  var T = { motores: 'motorview_motores', historial: 'motorview_historial', perfiles: 'motorview_perfiles' };
+  var T = { motores: 'motorview_motores', historial: 'motorview_historial', perfiles: 'motorview_perfiles', reparaciones: 'motorview_reparaciones' };
+  var TIPOS_REPARACION = ['Rebobinado', 'Cambio de rodamientos', 'Reparación mecánica', 'Mantención', 'Prueba eléctrica', 'Otro'];
 
   /* ─────────────── lo que se puede probar sin red ─────────────── */
 
@@ -18,8 +19,17 @@
       descripcion: r.descripcion, observaciones: r.observaciones, hp: r.hp, kw: r.kw, amp: r.amp,
       volt: r.volt, voltTxt: r.volt_txt, rpm: r.rpm, montaje: r.montaje, frame: r.frame,
       rodLibre: r.rod_libre, rodCarga: r.rod_carga, cosFi: r.cos_fi, hojaVida: r.hoja_vida,
+      criticidad: r.criticidad == null ? null : r.criticidad,
       actualizadoEn: r.actualizado_en, actualizadoPor: r.actualizado_por
     };
+  }
+
+  /** Formulario de reparación → cuerpo del POST. Vacío se manda como null; quién y cuándo lo pone el servidor. */
+  function aReparacion(motorId, d) {
+    var vacio = function (v) { v = v == null ? '' : String(v).trim(); return v === '' ? null : v; };
+    var o = { motor_id: motorId, tipo: d.tipo, taller: vacio(d.taller), descripcion: vacio(d.descripcion), resultado: vacio(d.resultado) };
+    if (vacio(d.fecha)) o.fecha = String(d.fecha).trim();
+    return o;
   }
 
   /** Cambios del formulario → cuerpo del PATCH. Vacío se manda como null. */
@@ -29,6 +39,7 @@
     if ('estado' in c) o.estado = c.estado;
     if ('area' in c) o.area = String(c.area).trim();
     if ('observaciones' in c) o.observaciones = vacio(c.observaciones);
+    if ('criticidad' in c) o.criticidad = vacio(c.criticidad);
     o.motivo = vacio(c.comentario);
     return o;
   }
@@ -37,7 +48,8 @@
     var m = json && (json.message || json.msg || json.error_description) || '';
     if (estado === 401) return 'Tu sesión expiró. Vuelve a ingresar.';
     if (estado === 403 || (json && json.code === '42501')) return 'Tu rol no permite este cambio.';
-    if (json && json.code === '23514') return 'Algún valor no es válido (estado, ubicación o largo de los textos).';
+    if (json && /^(PGRST204|PGRST205|42703|42P01)$/.test(json.code)) return 'La base de datos no tiene la última versión. Ejecuta supabase/esquema.sql de nuevo en Supabase.';
+    if (json && json.code === '23514') return 'Algún valor no es válido (estado, ubicación, criticidad, tipo o largo de los textos).';
     return m || 'Error ' + estado + ' al contactar a Supabase.';
   }
 
@@ -87,7 +99,18 @@
     return rest(T.historial + '?select=fecha,usuario,campo,anterior,nuevo,comentario&motor_id=eq.' + encodeURIComponent(id) + '&order=id.desc&limit=100');
   }
 
-  var API = { deFila: deFila, aCambios: aCambios, mensaje: mensaje, perfil: perfil, motores: motores, guardar: guardar, historial: historial };
+  async function reparaciones(id) {
+    return rest(T.reparaciones + '?select=id,fecha,tipo,taller,descripcion,resultado,registrado_por,registrado_en&motor_id=eq.' + encodeURIComponent(id) + '&order=fecha.desc,id.desc&limit=100');
+  }
+
+  async function registrarReparacion(id, datos) {
+    var f = await rest(T.reparaciones, { metodo: 'POST', cuerpo: aReparacion(id, datos), cabeceras: { Prefer: 'return=representation' } });
+    if (!f || !f.length) throw new Error('No se pudo registrar: tu rol no permite agregar reparaciones.');
+    return f[0];
+  }
+
+  var API = { deFila: deFila, aCambios: aCambios, aReparacion: aReparacion, mensaje: mensaje, perfil: perfil, motores: motores, guardar: guardar,
+              historial: historial, reparaciones: reparaciones, registrarReparacion: registrarReparacion, TIPOS_REPARACION: TIPOS_REPARACION };
   global.NUBE = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

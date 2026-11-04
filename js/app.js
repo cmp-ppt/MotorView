@@ -1,17 +1,30 @@
 (() => {
 'use strict';
-const D = window.MOTORES;
+const D = window.MOTORES, A = window.ANALISIS;
 const ESTADOS = [
   {k:'En servicio', c:'var(--ok)'}, {k:'Taller', c:'var(--taller)'},
   {k:'Repuesto', c:'var(--spare)'}, {k:'Reservado', c:'#c9930a'}, {k:'En transporte', c:'#8a5cf0'}, {k:'De baja', c:'var(--baja)'}];
 const COL = Object.fromEntries(ESTADOS.map(e => [e.k, e.c]));
+const CRIT = {A: {c: '#d23c3c', t: 'Crítico'}, B: {c: '#c9930a', t: 'Importante'}, C: {c: '#7b8696', t: 'Normal'}};
+const FAENAS = ['Planta Magnetita', 'Los Colorados', 'Pleito', 'Cerro Negro Norte', 'Romeral', 'Guayacán', 'Puerto Guacolda', 'Planta de Pellets', 'Puerto Punta Totoralillo'];
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = (n, d = 0) => n == null ? '—' : n.toLocaleString('es-CL', {maximumFractionDigits: d});
 const count = (arr, f) => arr.reduce((m, x) => { const k = f(x); m[k] = (m[k] || 0) + 1; return m; }, {});
-const state = {view:'resumen', q:'', estado:new Set(), area:'', volt:'', kwMin:'', cols:{}, masOpen:true, sort:'numero', dir:1, limit:80};
+const state = {view:'resumen', q:'', estado:new Set(), area:'', volt:'', kwMin:'', cal:'', cols:{}, masOpen:true, sort:'numero', dir:1, limit:80};
 const canEdit = () => window.MV.user.rol !== 'consulta';
+const critPill = c => c && CRIT[c] ? `<span class="crit" style="--c:${CRIT[c].c}" title="Criticidad ${c}: ${CRIT[c].t}">${c}</span>` : '<span class="muted">—</span>';
+
+/* Íconos: motor según su montaje y tipo de faena */
+const iconoMotor = mont => mont === 'vertical'
+  ? '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="9" height="12" rx="2"/><path d="M11.500 15v5.500M7 7h9M7 11h9M16 8h3v3h-3"/></svg>'
+  : '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="8" width="12" height="9" rx="2"/><path d="M6 12.500H2.500M9 8v9M12 8v9M15 8v9M10 5h4v3h-4"/></svg>';
+const iconoFaena = n => /^Puerto/.test(n)
+  ? '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18c2 0 2 1.500 4 1.500s2-1.500 4-1.500 2 1.500 4 1.500 2-1.500 4-1.500 2 1.500 4 1.500M5 15V6h4v9M9 10h9v5"/></svg>'
+  : /^Planta/.test(n)
+    ? '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V9l6 4V9l6 4V4h3v16z"/></svg>'
+    : '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 19 9 7l4 7 3-4 6 9z"/></svg>';
 
 /* Columnas de la planilla, con sus mismos encabezados: grupo (t) y subcolumnas (c).
    Cada subcolumna: [clave, subtítulo, filtro]. El filtro es un desplegable con los valores reales
@@ -19,6 +32,7 @@ const canEdit = () => window.MV.user.rol !== 'consulta';
 const GRUPOS = [
   {t: 'N° Motor', c: [['numero', 'N°']]},
   {t: 'Estado', c: [['estado', 'Estado']]},
+  {t: 'Criticidad', c: [['criticidad', 'Crit.', 'sel']]},
   {t: 'Área', c: [['area', 'Área']]},
   {t: 'Potencia', c: [['hp', 'HP', 'sel'], ['kw', 'kW', 'sel']]},
   {t: 'Corriente', c: [['amp', 'Amp.', 'sel']]},
@@ -46,13 +60,16 @@ const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLow
 const index = m => { m._s = norm([m.numero, m.tag, m.descripcion, m.area, m.frame, m.observaciones, m.rodLibre, m.rodCarga].join(' ')); };
 D.forEach(index);
 const voltBand = m => m.volt == null ? 'S/D' : m.volt >= 3000 ? 'Media tensión (4 kV)' : m.volt >= 600 ? 'Otro' : 'Baja tensión';
+const problemaCal = () => state.cal ? A.calidad(D).find(p => p.k === state.cal) : null;
 function filtered() {
   const q = norm(state.q).trim().split(/\s+/).filter(Boolean);
+  const pc = problemaCal(), ids = pc ? new Set(pc.ids) : null;
   return D.filter(m =>
     (!state.estado.size || state.estado.has(m.estado)) &&
     (!state.area || m.area === state.area) &&
     (!state.volt || voltBand(m) === state.volt) &&
     (!state.kwMin || (m.kw ?? 0) >= +state.kwMin) &&
+    (!ids || ids.has(m.id)) &&
     Object.entries(state.cols).every(([k, v]) => !v || coincideCol(m, k, v)) &&
     q.every(t => m._s.includes(t)));
 }
@@ -87,7 +104,19 @@ const ic = {
   ok:'<svg viewBox="0 0 24 24"><path d="m9 16.200-3.500-3.500L4 14.100l5 5 11-11-1.400-1.400z"/></svg>',
   tool:'<svg viewBox="0 0 24 24"><path d="m22.700 19-9.100-9.100c.9-2.300.4-5-1.500-6.900-2-2-5-2.400-7.400-1.300L9 6 6 9 1.600 4.700C.4 7.100.9 10.100 2.900 12.100c1.900 1.900 4.600 2.400 6.900 1.500l9.100 9.100c.4.400 1 .4 1.400 0l2.300-2.300c.5-.4.500-1.100.1-1.400z"/></svg>',
   box:'<svg viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5zm-9 11.700-7-3.900V9.700l7 3.900zm0-8.100L5.500 8 12 4.300 18.500 8z"/></svg>',
+  warn:'<svg viewBox="0 0 24 24"><path d="M12 2 1 21h22zm1 15h-2v-2h2zm0-4h-2V9h2z"/></svg>',
   mw:'<svg viewBox="0 0 24 24"><path d="M3 13h2v8H3zm4-4h2v12H7zm4-6h2v18h-2zm4 8h2v10h-2zm4-4h2v14h-2z"/></svg>'};
+function tarjetasFaena() {
+  const extra = [...new Set(D.map(m => m.faena))].filter(f => !FAENAS.includes(f));
+  return `<div class="faenas-g">${[...FAENAS, ...extra].map(f => {
+    const ms = D.filter(m => m.faena === f);
+    if (!ms.length) return `<div class="card fcard off">${iconoFaena(f)}<h4>${esc(f)}</h4><small>Pendiente de carga</small></div>`;
+    const c = count(ms, m => m.estado);
+    return `<button class="card fcard" data-faena="${esc(f)}">${iconoFaena(f)}<h4>${esc(f)}</h4><div class="fn">${ms.length}<small> motores</small></div>
+      <div class="fbar">${ESTADOS.map(e => `<span style="width:${(c[e.k] || 0) / ms.length * 100}%;background:${e.c}" data-tip="${e.k}: ${c[e.k] || 0}"></span>`).join('')}</div>
+      <div class="fleg">${ESTADOS.filter(e => c[e.k]).map(e => `<span><i style="background:${e.c}"></i>${c[e.k]} ${e.k.toLowerCase()}</span>`).join('')}</div></button>`;
+  }).join('')}</div>`;
+}
 function renderResumen() {
   const n = D.length, by = count(D, m => m.estado), mw = D.reduce((s, m) => s + (m.kw || 0), 0) / 1000;
   const act = D.filter(m => m.estado === 'En servicio');
@@ -98,12 +127,16 @@ function renderResumen() {
   const kwH = bandas.map(([k, lo, hi]) => ({k: k + ' kW', v: D.filter(m => m.kw != null && m.kw > lo && m.kw <= hi).length}));
   const vb = Object.entries(count(D, m => m.volt == null ? 'S/D' : m.volt >= 3000 ? '4 kV' : m.volt >= 600 ? '>600 V' : (m.volt <= 240 ? '≤240 V' : '380–460 V'))).map(([k, v]) => ({k, v}));
   const kwDesc = [...D].filter(m => m.kw).sort((a, b) => b.kw - a.kw).slice(0, 6);
+  const sinResp = A.cobertura(D).filter(x => x.sinRespaldo).length;
+  const crit = A.criticosPorArea(D);
   $('#v-resumen').innerHTML = `
+  <h3 class="seccion">Faenas</h3>${tarjetasFaena()}
   <div class="grid kpis">
     ${kpi(ic.all, 'var(--accent)', n, '', 'Motores registrados', esc([...new Set(D.map(m => m.faena))].join(' · ')), '{}')}
     ${kpi(ic.ok, 'var(--ok)', by['En servicio'] || 0, '', 'En servicio', fmt((by['En servicio']||0)/n*100) + '%', '{"estado":"En servicio"}')}
     ${kpi(ic.tool, 'var(--taller)', by['Taller'] || 0, '', 'En taller / reparación', fmt((by['Taller']||0)/n*100) + '%', '{"estado":"Taller"}')}
     ${kpi(ic.box, 'var(--spare)', by['Repuesto'] || 0, '', 'Repuestos disponibles', 'Bodega', '{"estado":"Repuesto"}')}
+    ${kpi(ic.warn, sinResp ? '#d23c3c' : 'var(--ok)', sinResp, '', 'Tipos de motor sin repuesto', 'ver cobertura', '{"view":"disponibilidad"}')}
     ${kpi(ic.mw, '#7c5cd6', fmt(mw, 2), 'MW', 'Potencia instalada total', fmt(act.reduce((s,m)=>s+(m.kw||0),0)/1000,2) + ' MW activos', '{}')}
   </div>
   <div class="grid row2">
@@ -118,10 +151,15 @@ function renderResumen() {
   <div class="grid row3">
     <div class="card"><h3>Distribución por potencia</h3><div class="sub">Cantidad de motores por rango (kW)</div>${hist(kwH, 'kw', 'kw')}</div>
     <div class="card"><h3>Nivel de tensión</h3><div class="sub">Voltaje de operación</div>${hist(vb, 'v', 'v')}</div>
+    <div class="card"><h3>Motores críticos por área</h3><div class="sub">Criticidad A · cuántos están fuera de servicio</div>${crit.length
+      ? `<div class="crits">${crit.map(x => `<button data-critarea="${esc(x.area)}"><span>${esc(x.area)}</span><b>${x.total}</b><span class="pill" style="--c:${x.fuera ? '#d23c3c' : 'var(--ok)'}">${x.fuera ? x.fuera + ' fuera de servicio' : 'Todos en servicio'}</span></button>`).join('')}</div>`
+      : '<p class="note">Aún no hay motores con criticidad A. Asígnala desde la ficha de cada motor.</p>'}</div>
     <div class="card"><h3>Mayores motores</h3><div class="sub">Top 6 por potencia</div><div class="rep">${kwDesc.map(m => `<button data-id="${m.id}"><div><b style="color:var(--accent)">${fmt(m.kw)} kW</b></div><div>N° ${m.numero}<small>${esc(m.descripcion || m.tag || m.area)} · ${esc(m.area)}</small></div><span class="pill" style="--c:${COL[m.estado]};margin-left:auto">${m.estado}</span></button>`).join('')}</div></div>
   </div>`;
   const root = $('#v-resumen'); bindTip(root);
-  $$('.kpi', root).forEach(k => k.onclick = () => go('inventario', JSON.parse(k.dataset.go)));
+  $$('.kpi', root).forEach(k => k.onclick = () => { const g = JSON.parse(k.dataset.go); g.view ? go(g.view) : go('inventario', g); });
+  $$('[data-faena]', root).forEach(e => e.onclick = () => go('inventario', {}));
+  $$('[data-critarea]', root).forEach(e => e.onclick = () => go('inventario', {area: e.dataset.critarea, cols: {criticidad: 'A'}}));
   $$('[data-estado]', root).forEach(e => e.onclick = () => go('inventario', {estado: e.dataset.estado}));
   $$('.bar', root).forEach(e => e.onclick = () => go('inventario', {area: e.dataset.area}));
   $$('[data-id]', root).forEach(e => e.onclick = () => openDrawer(+e.dataset.id));
@@ -137,13 +175,14 @@ const sk = k => k === 'voltTxt' ? 'volt' : k;                 // el voltaje se o
 const CELDA = {
   numero: m => `<td><b>${m.numero ?? '—'}</b></td>`,
   estado: m => `<td><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span></td>`,
+  criticidad: m => `<td>${critPill(m.criticidad)}</td>`,
   area: m => `<td>${esc(m.area)}</td>`,
   hp: m => `<td class="num">${fmt(m.hp, 1)}</td>`,
   kw: m => `<td class="num">${fmt(m.kw, 1)}</td>`,
   amp: m => `<td class="num">${fmt(m.amp, 1)}</td>`,
   voltTxt: m => `<td class="num">${esc(m.voltTxt) || '—'}</td>`,
   rpm: m => `<td class="num">${fmt(m.rpm)}</td>`,
-  montaje: m => `<td>${esc(m.montaje) || '—'}</td>`,
+  montaje: m => `<td><span class="mic">${m.montaje ? iconoMotor(m.montaje) : ''}</span>${esc(m.montaje) || '—'}</td>`,
   frame: m => `<td>${esc(m.frame) || '—'}</td>`,
   rodLibre: m => `<td>${esc(m.rodLibre) || '—'}</td>`,
   rodCarga: m => `<td>${esc(m.rodCarga) || '—'}</td>`,
@@ -153,7 +192,7 @@ const CELDA = {
 };
 function renderInventario() {
   const areas = [...new Set(D.map(m => m.area))].sort();
-  const v = $('#v-inventario'), n = colsActivas();
+  const v = $('#v-inventario'), n = colsActivas(), pc = problemaCal();
   const filtroCol = (g, [k, l, t]) => {
     const pref = g.c.length > 1 ? `${g.t} ${l}` : g.t, on = state.cols[k] ? 'on' : '';
     if (t === 'txt') return `<input class="chip ${on}" data-col="${k}" placeholder="${l}" value="${esc(state.cols[k] || '')}" aria-label="${esc(pref)}">`;
@@ -167,6 +206,7 @@ function renderInventario() {
   <div class="tools">
     ${ESTADOS.map(e => `<button class="chip ${state.estado.has(e.k) ? 'on' : ''}" data-e="${e.k}"><i style="background:${e.c}"></i>${e.k}</button>`).join('')}
     <select class="chip ${state.area ? 'on' : ''}" id="fArea"><option value="">Todas las áreas</option>${areas.map(a => `<option ${a === state.area ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
+    ${pc ? `<button class="chip on" data-quit="cal">Calidad: ${esc(pc.t)} ✕</button>` : ''}
     ${state.kwMin ? `<button class="chip on" data-quit="kwMin">Potencia ≥ ${esc(state.kwMin)} kW ✕</button>` : ''}
     ${state.volt ? `<button class="chip on" data-quit="volt">${esc(state.volt)} ✕</button>` : ''}
     <button class="chip ${n ? 'on' : ''}" id="fMas">Filtros por columna${n ? ' (' + n + ')' : ''} ▾</button>
@@ -184,7 +224,7 @@ function renderInventario() {
     else el.onchange = e => { state.cols[k] = e.target.value; state.limit = 80; renderInventario(); };
   });
   $('#fArea').onchange = e => { state.area = e.target.value; state.limit = 80; renderInventario(); };
-  $('#clr').onclick = () => { Object.assign(state, {q:'', estado:new Set(), area:'', volt:'', kwMin:'', cols:{}}); $('#gsearch').value = ''; renderInventario(); };
+  $('#clr').onclick = () => { Object.assign(state, {q:'', estado:new Set(), area:'', volt:'', kwMin:'', cal:'', cols:{}}); $('#gsearch').value = ''; renderInventario(); };
   $('#csv').onclick = exportCSV;
   $$('th[data-k]', v).forEach(th => th.onclick = () => { const k = th.dataset.k; state.dir = state.sort === k ? -state.dir : 1; state.sort = k; renderInventario(); });
   fillRows();
@@ -200,21 +240,73 @@ function fillRows() {
   const mb = $('#more'); if (mb) mb.onclick = () => { state.limit += 120; fillRows(); };
 }
 function exportCSV() {
-  const rows = filtered(), keys = ['numero','faena','area','estado','tag','descripcion','kw','hp','volt','amp','rpm','montaje','frame','rodLibre','rodCarga','cosFi','observaciones'];
+  const rows = filtered(), keys = ['numero','faena','area','estado','criticidad','tag','descripcion','kw','hp','volt','amp','rpm','montaje','frame','rodLibre','rodCarga','cosFi','observaciones'];
   const csv = [keys.join(';'), ...rows.map(m => keys.map(k => `"${String(m[k] ?? '').replace(/"/g, '""')}"`).join(';'))].join('\n');
   const a = Object.assign(document.createElement('a'), {href: URL.createObjectURL(new Blob(['﻿' + csv], {type: 'text/csv'})), download: 'motores_cmp.csv'}); a.click();
+}
+
+/* ---------- vista Calidad de datos ---------- */
+function renderCalidad() {
+  const cal = A.calidad(D), vivos = cal[0].de, defectos = new Set();
+  cal.filter(p => p.k !== 'sinCrit').forEach(p => p.ids.forEach(i => defectos.add(i)));
+  const limpios = vivos - defectos.size, pct = vivos ? limpios / vivos * 100 : 100, r = 52, circ = 2 * Math.PI * r;
+  $('#v-calidad').innerHTML = `
+  <div class="grid row2c">
+    <div class="card qhead"><svg viewBox="0 0 130 130" class="ring"><circle cx="65" cy="65" r="${r}" class="rb"/><circle cx="65" cy="65" r="${r}" class="rf" stroke-dasharray="${circ * pct / 100} ${circ}" transform="rotate(-90 65 65)"/><text x="65" y="63" text-anchor="middle" class="c1">${fmt(pct)}%</text><text x="65" y="82" text-anchor="middle" class="c2">completos</text></svg>
+      <div><h3>${limpios} de ${vivos} motores sin problemas</h3><p class="sub" style="margin:0">Se revisan los motores que no están dados de baja. La criticidad no cuenta como defecto: es una asignación pendiente.</p></div></div>
+    <div class="card"><h3>Cómo usar este panel</h3><p class="sub" style="margin:0">Abre una tarjeta para ver los motores con ese problema. Corrige desde la ficha lo que se pueda (ubicación, criticidad). Lo demás —TAG, datos de placa, números repetidos— se completa en terreno o en la planilla de origen.</p></div>
+  </div>
+  <div class="grid qgrid">${cal.map(p => `<div class="card qcard ${p.n ? '' : 'ok'}">
+    <h4>${esc(p.t)}</h4><div class="qn">${p.n}<small> de ${p.de}</small></div>
+    <div class="qbar"><span style="width:${p.de ? p.n / p.de * 100 : 0}%"></span></div>
+    <p>${esc(p.ayuda)}</p><p class="como"><b>Cómo se corrige:</b> ${esc(p.corrige)}</p>
+    ${p.n ? `<button class="btn sec" data-cal="${p.k}">Ver los ${p.n} motores</button>` : '<span class="pill" style="--c:var(--ok)">Sin problemas</span>'}</div>`).join('')}</div>`;
+  $$('[data-cal]', $('#v-calidad')).forEach(b => b.onclick = () => go('inventario', {cal: b.dataset.cal}));
 }
 
 /* ---------- vista Disponibilidad ---------- */
 function renderDisp() {
   const sp = D.filter(m => m.estado === 'Repuesto'), tl = D.filter(m => m.estado === 'Taller'), rs = D.filter(m => m.estado === 'Reservado'), tr = D.filter(m => m.estado === 'En transporte');
+  const card = m => `<div class="card sp" data-id="${m.id}"><div class="kw">${fmt(m.kw, 1)}<small> kW · ${fmt(m.hp, 1)} HP</small></div><div class="m"><b>N° ${m.numero ?? '—'}</b> ${m.tag ? '· ' + esc(m.tag) : ''}<br>${m.volt ? fmt(m.volt) + ' V' : 's/d'} · ${m.rpm ? fmt(m.rpm) + ' rpm' : 's/d'} · <span class="mic">${m.montaje ? iconoMotor(m.montaje) : ''}</span>${m.montaje || 'montaje s/d'}<br>${esc(m.descripcion || '')}${m.observaciones ? '<br><i>' + esc(m.observaciones) + '</i>' : ''}</div></div>`;
   const sec = (t, a) => `<h3 style="margin:28px 0 12px">${t} · ${a.length}</h3>` + (a.length ? `<div class="disp">${a.sort((x, y) => (y.kw || 0) - (x.kw || 0)).map(card).join('')}</div>` : '<p class="note">Ningún motor en este estado.</p>');
-  const card = m => `<div class="card sp" data-id="${m.id}"><div class="kw">${fmt(m.kw, 1)}<small> kW · ${fmt(m.hp, 1)} HP</small></div><div class="m"><b>N° ${m.numero ?? '—'}</b> ${m.tag ? '· ' + esc(m.tag) : ''}<br>${m.volt ? fmt(m.volt) + ' V' : 's/d'} · ${m.rpm ? fmt(m.rpm) + ' rpm' : 's/d'} · ${m.montaje || 'montaje s/d'}<br>${esc(m.descripcion || '')}${m.observaciones ? '<br><i>' + esc(m.observaciones) + '</i>' : ''}</div></div>`;
+  const cov = A.cobertura(D), sin = cov.filter(x => x.sinRespaldo), expuestos = sin.reduce((s, x) => s + x.servicio, 0);
+  const tipo = x => `${fmt(x.kw, 1)} kW · ${x.voltTxt ? esc(x.voltTxt) + ' V' : 's/d'} · ${x.polos ? x.polos + ' polos' : 's/d'}`;
   $('#v-disponibilidad').innerHTML = `
+    <div class="card" style="margin-bottom:18px"><h3>Cobertura de repuestos</h3>
+      <div class="sub">${sin.length ? `<b>${sin.length} de ${cov.length}</b> tipos de motor no tienen repuesto disponible y dejan <b>${expuestos}</b> motores en servicio sin respaldo.` : 'Todos los tipos de motor en servicio tienen al menos un repuesto disponible.'} Un tipo agrupa motores de igual potencia, voltaje y número de polos.</div>
+      <div class="covwrap"><table class="cov"><thead><tr><th>Tipo de motor</th><th class="num">En servicio</th><th class="num">Críticos (A)</th><th class="num">Repuesto</th><th class="num">Reservado</th><th class="num">En transporte</th><th class="num">En taller</th><th>Respaldo</th></tr></thead><tbody>
+      ${cov.map((x, i) => `<tr data-cov="${i}"><td><b>${tipo(x)}</b></td><td class="num">${x.servicio}</td><td class="num">${x.criticos || '—'}</td><td class="num">${x.repuesto}</td><td class="num">${x.reservado || '—'}</td><td class="num">${x.transporte || '—'}</td><td class="num">${x.taller || '—'}</td>
+        <td>${x.sinRespaldo ? '<span class="pill" style="--c:#d23c3c">Sin respaldo</span>' : `<span class="pill" style="--c:var(--ok)">1 repuesto por cada ${Math.ceil(x.servicio / x.repuesto)}</span>`}</td></tr>`).join('')}
+      </tbody></table></div></div>
     <div class="card" style="margin-bottom:18px"><h3>Cómo usar esta vista</h3><div class="sub" style="margin:0">Aquí ves los motores listos para reemplazo. Abre cualquier motor del inventario y el sistema te sugiere repuestos compatibles (misma potencia, tensión y velocidad similar).</div></div>
     <h3 style="margin:8px 0 12px">Repuestos en bodega · ${sp.length}</h3><div class="disp">${sp.sort((a, b) => (b.kw || 0) - (a.kw || 0)).map(card).join('')}</div>
     ${sec('En taller / reparación', tl)}${sec('Reservados', rs)}${sec('En transporte', tr)}`;
-  $$('[data-id]', $('#v-disponibilidad')).forEach(e => e.onclick = () => openDrawer(+e.dataset.id));
+  const root = $('#v-disponibilidad');
+  $$('[data-id]', root).forEach(e => e.onclick = () => openDrawer(+e.dataset.id));
+  $$('[data-cov]', root).forEach(e => e.onclick = () => { const x = cov[+e.dataset.cov]; go('inventario', {cols: {kw: String(x.kw), ...(x.voltTxt ? {voltTxt: x.voltTxt} : {})}}); });
+}
+
+/* ---------- vista Reporte (para imprimir o guardar como PDF) ---------- */
+function renderReporte() {
+  const por = count(D, m => m.estado), fuera = D.filter(m => ['Taller', 'Reservado', 'En transporte'].includes(m.estado)).sort((a, b) => (b.kw || 0) - (a.kw || 0));
+  const cov = A.cobertura(D).filter(x => x.sinRespaldo).slice(0, 12), crit = D.filter(m => m.criticidad === 'A' && m.estado !== 'En servicio' && m.estado !== 'De baja');
+  const cal = A.calidad(D), hoy = new Date().toLocaleDateString('es-CL', {day: 'numeric', month: 'long', year: 'numeric'});
+  const fila = m => `<tr><td>${m.numero ?? '—'}</td><td>${esc(m.tag || '—')}</td><td>${esc(m.descripcion || '—')}</td><td>${esc(m.area)}</td><td class="num">${fmt(m.kw, 1)}</td><td>${m.estado}</td><td>${m.criticidad || '—'}</td><td>${esc(m.observaciones || '')}</td></tr>`;
+  const tabla = ms => ms.length ? `<table class="rt"><thead><tr><th>N°</th><th>TAG</th><th>Descripción</th><th>Área</th><th class="num">kW</th><th>Estado</th><th>Crit.</th><th>Observaciones</th></tr></thead><tbody>${ms.map(fila).join('')}</tbody></table>` : '<p class="note">Ninguno.</p>';
+  $('#v-reporte').innerHTML = `
+  <div class="noprint repbar"><button class="btn" id="imprimir">Imprimir o guardar como PDF</button><span class="sub">Se genera con los datos actuales. En el cuadro de impresión elige "Guardar como PDF".</span></div>
+  <article class="doc">
+    <header class="doch"><img src="img/cmp.jpg" alt="CMP, una empresa del grupo CAP" width="131" height="71"><div><h2>Informe de motores eléctricos</h2><p>${esc([...new Set(D.map(m => m.faena))].join(' · '))} · ${hoy}</p><p class="sub">Preparado por ${esc(window.MV.user.nombre)}</p></div></header>
+    <h3>Resumen</h3>
+    <table class="rt"><thead><tr>${ESTADOS.map(e => `<th class="num">${e.k}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody><tr>${ESTADOS.map(e => `<td class="num">${por[e.k] || 0}</td>`).join('')}<td class="num"><b>${D.length}</b></td></tr></tbody></table>
+    <h3>Motores fuera de servicio (${fuera.length})</h3><p class="sub">En taller, reservados o en transporte.</p>${tabla(fuera)}
+    <h3>Motores críticos (A) fuera de servicio (${crit.length})</h3>${tabla(crit)}
+    <h3>Tipos de motor sin repuesto (${A.cobertura(D).filter(x => x.sinRespaldo).length})</h3>
+    ${cov.length ? `<table class="rt"><thead><tr><th>Tipo</th><th class="num">En servicio</th><th class="num">Críticos (A)</th></tr></thead><tbody>${cov.map(x => `<tr><td>${fmt(x.kw, 1)} kW · ${x.voltTxt ? esc(x.voltTxt) + ' V' : 's/d'} · ${x.polos ? x.polos + ' polos' : 's/d'}</td><td class="num">${x.servicio}</td><td class="num">${x.criticos || '—'}</td></tr>`).join('')}</tbody></table>${A.cobertura(D).filter(x => x.sinRespaldo).length > 12 ? '<p class="sub">Se muestran los 12 con más riesgo.</p>' : ''}` : '<p class="note">Todos los tipos en servicio tienen repuesto.</p>'}
+    <h3>Calidad de los datos</h3>
+    <table class="rt"><thead><tr><th>Problema</th><th class="num">Motores</th></tr></thead><tbody>${cal.map(p => `<tr><td>${esc(p.t)}</td><td class="num">${p.n}</td></tr>`).join('')}</tbody></table>
+  </article>`;
+  $('#imprimir').onclick = () => window.print();
 }
 
 /* ---------- ficha de motor ---------- */
@@ -223,24 +315,37 @@ function compat(m) {
   if (!m.kw) return [];
   return D.filter(x => x.estado === 'Repuesto' && x.id !== m.id && x.kw && Math.abs(x.kw - m.kw) / m.kw <= .1 && (!m.volt || !x.volt || x.volt === m.volt) && (!m.rpm || !x.rpm || Math.abs(x.rpm - m.rpm) / m.rpm <= .08));
 }
+const fechaCorta = f => /^\d{4}-\d{2}-\d{2}$/.test(f) ? new Date(f + 'T12:00:00').toLocaleDateString('es-CL') : '—';
 function openDrawer(id) {
   const m = D.find(x => x.id === id); if (!m) return;
   const kv = (l, v) => `<div><span>${l}</span><b>${v == null || v === '' ? '—' : esc(v)}</b></div>`;
   const cs = m.estado === 'En servicio' || m.estado === 'Taller' ? compat(m) : [];
+  const hoy = new Date().toISOString().slice(0, 10);
   dr.innerHTML = `
-  <div class="dh"><button class="x" id="dx">✕</button><small>${esc(m.faena)}</small><h2>Motor N° ${m.numero ?? '—'}</h2><p>${esc(m.descripcion || m.tag || 'Sin descripción')}</p><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span></div>
+  <div class="dh"><button class="x" id="dx">✕</button><small>${esc(m.faena)}</small><h2>Motor N° ${m.numero ?? '—'}</h2><p>${esc(m.descripcion || m.tag || 'Sin descripción')}</p><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span> ${m.criticidad ? `<span class="pill" style="--c:${CRIT[m.criticidad].c}">Criticidad ${m.criticidad}</span>` : ''}</div>
   <div class="big"><div><b>${fmt(m.kw, 1)}</b><span>kW</span></div><div><b>${m.voltTxt ? esc(m.voltTxt) : '—'}</b><span>Voltios</span></div><div><b>${fmt(m.rpm)}</b><span>RPM</span></div></div>
-  <div class="sec"><h4>Ubicación y estado</h4><div class="kv">${kv('Ubicación', m.area)}${kv('TAG', m.tag)}${kv('Estado', m.estado)}${kv('Faena', m.faena)}</div>${m.observaciones ? `<p class="note">${esc(m.observaciones)}</p>` : ''}
+  <div class="sec"><h4>Ubicación y estado</h4><div class="kv">${kv('Ubicación', m.area)}${kv('TAG', m.tag)}${kv('Estado', m.estado)}${kv('Faena', m.faena)}${kv('Criticidad', m.criticidad ? m.criticidad + ' · ' + CRIT[m.criticidad].t : null)}</div>${m.observaciones ? `<p class="note">${esc(m.observaciones)}</p>` : ''}
     ${m.actualizadoPor ? `<p class="upd">Última actualización: ${esc(m.actualizadoPor)} · ${new Date(m.actualizadoEn).toLocaleString('es-CL')}</p>` : ''}</div>
   ${canEdit() ? `<form class="sec eform" id="ef"><h4>Actualizar motor</h4>
     <label>Estado<select name="estado">${ESTADOS.map(e => `<option ${e.k === m.estado ? 'selected' : ''}>${e.k}</option>`).join('')}</select></label>
     <label>Ubicación<input name="area" list="areas" value="${esc(m.area)}" maxlength="60" required></label>
     <datalist id="areas">${[...new Set(D.map(x => x.area))].map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+    <label>Criticidad<select name="crit"><option value="">Sin asignar</option>${Object.entries(CRIT).map(([k, c]) => `<option value="${k}" ${k === m.criticidad ? 'selected' : ''}>${k} · ${c.t}</option>`).join('')}</select></label>
     <label>Observaciones<textarea name="obs" rows="2" maxlength="500">${esc(m.observaciones)}</textarea></label>
     <label>Motivo del cambio (queda en el historial)<input name="com" maxlength="300"></label>
     <div class="erow"><button class="btn" type="submit">Guardar cambios</button><span id="emsg"></span></div></form>` : ''}
-  <div class="sec"><h4>Características técnicas</h4><div class="kv">${kv('Potencia', `${fmt(m.hp, 1)} HP / ${fmt(m.kw, 1)} kW`)}${kv('Corriente', m.amp != null ? fmt(m.amp, 1) + ' A' : null)}${kv('Montaje', m.montaje)}${kv('Frame', m.frame)}${kv('Cos φ', m.cosFi != null ? fmt(m.cosFi, 2) : null)}${kv('Rodam. lado libre', m.rodLibre)}${kv('Rodam. lado carga', m.rodCarga)}</div></div>
+  <div class="sec"><h4>Características técnicas</h4><div class="kv">${kv('Potencia', `${fmt(m.hp, 1)} HP / ${fmt(m.kw, 1)} kW`)}${kv('Corriente', m.amp != null ? fmt(m.amp, 1) + ' A' : null)}<div><span>Montaje</span><b>${m.montaje ? `<span class="mic">${iconoMotor(m.montaje)}</span>${esc(m.montaje)}` : '—'}</b></div>${kv('Frame', m.frame)}${kv('Cos φ', m.cosFi != null ? fmt(m.cosFi, 2) : null)}${kv('Rodam. lado libre', m.rodLibre)}${kv('Rodam. lado carga', m.rodCarga)}</div></div>
   ${m.hojaVida ? `<div class="sec"><h4>Hoja de vida</h4><p class="note" style="margin:0;word-break:break-all">${esc(m.hojaVida)}</p></div>` : ''}
+  <div class="sec"><h4>Reparaciones y rebobinados <span id="repN" class="muted"></span></h4>
+    ${canEdit() ? `<button class="btn sec" id="repAdd" type="button">+ Registrar reparación</button>
+    <form class="eform repform" id="repForm" hidden>
+      <label>Tipo<select name="tipo">${window.MV.tiposReparacion.map(t => `<option>${t}</option>`).join('')}</select></label>
+      <label>Fecha<input type="date" name="fecha" value="${hoy}" max="${hoy}" required></label>
+      <label>Taller o responsable<input name="taller" maxlength="100"></label>
+      <label>Trabajo realizado<textarea name="desc" rows="2" maxlength="500"></textarea></label>
+      <label>Resultado: pruebas, garantía<input name="res" maxlength="300"></label>
+      <div class="erow"><button class="btn" type="submit">Guardar reparación</button><span id="repMsg"></span></div></form>` : ''}
+    <div id="repList" class="histl">Cargando…</div></div>
   ${cs.length ? `<div class="sec"><h4>Repuestos compatibles (${cs.length})</h4><div class="rep">${cs.slice(0, 6).map(x => `<button data-id="${x.id}"><b>N° ${x.numero ?? '—'}</b><div>${fmt(x.kw, 1)} kW · ${x.volt ? fmt(x.volt) + ' V' : 's/d'} · ${x.rpm ? fmt(x.rpm) + ' rpm' : 's/d'}<small>${esc(x.tag || x.descripcion || 'Bodega')}</small></div></button>`).join('')}</div></div>` : (m.estado === 'En servicio' ? `<div class="sec"><h4>Repuestos compatibles</h4><p class="note">No hay repuestos en bodega con potencia, tensión y velocidad similares.</p></div>` : '')}
   <div class="sec"><h4>Historial de cambios</h4><div id="hist" class="histl">Cargando…</div></div>`;
   dr.dataset.id = m.id;
@@ -248,32 +353,53 @@ function openDrawer(id) {
   const ef = $('#ef', dr);
   if (ef) ef.onsubmit = async e => {
     e.preventDefault(); const msg = $('#emsg'); msg.className = ''; msg.textContent = 'Guardando…';
-    const f = ef.elements;
+    const f = ef.elements, cambios = {estado: f.estado.value, area: f.area.value, observaciones: f.obs.value, comentario: f.com.value};
+    if (f.crit.value !== (m.criticidad || '')) cambios.criticidad = f.crit.value;      // solo si cambió
     try {
-      Object.assign(m, await window.MV.guardar(m.id, {estado: f.estado.value, area: f.area.value, observaciones: f.obs.value, comentario: f.com.value}));
+      Object.assign(m, await window.MV.guardar(m.id, cambios));
       index(m); refresh(); openDrawer(m.id);
     } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
   };
-  const CAMPO = {estado: 'Estado', area: 'Ubicación', observaciones: 'Observaciones'};
+  const CAMPO = {estado: 'Estado', area: 'Ubicación', observaciones: 'Observaciones', criticidad: 'Criticidad'};
   window.MV.historial(m.id).then(h => {
     const el = $('#hist'); if (!el || dr.dataset.id != m.id) return;
     el.innerHTML = h.length ? h.map(x => `<div class="hi"><b>${CAMPO[x.campo] || x.campo}</b>: ${esc(x.anterior ?? '—')} → <b>${esc(x.nuevo ?? '—')}</b><small>${esc(x.usuario)} · ${new Date(x.fecha).toLocaleString('es-CL')}${x.comentario ? ' · “' + esc(x.comentario) + '”' : ''}</small></div>`).join('') : '<p class="note" style="margin:0">Sin cambios registrados desde la importación del Excel.</p>';
   }).catch(() => {});
+  const cargarRep = () => window.MV.reparaciones(m.id).then(lista => {
+    const el = $('#repList'); if (!el || dr.dataset.id != m.id) return;
+    const reb = lista.filter(x => x.tipo === 'Rebobinado').length;
+    $('#repN').textContent = lista.length ? `· ${lista.length} registro${lista.length > 1 ? 's' : ''}${reb ? `, ${reb} rebobinado${reb > 1 ? 's' : ''}` : ''}` : '';
+    el.innerHTML = lista.length ? lista.map(x => `<div class="hi"><b>${esc(x.tipo)}</b> · ${fechaCorta(x.fecha)}${x.taller ? ' · ' + esc(x.taller) : ''}${x.descripcion ? `<br>${esc(x.descripcion)}` : ''}${x.resultado ? `<br><i>${esc(x.resultado)}</i>` : ''}<small>Registrado por ${esc(x.registrado_por || '—')}</small></div>`).join('') : '<p class="note" style="margin:0">Sin reparaciones registradas.</p>';
+  }).catch(err => { const el = $('#repList'); if (el && dr.dataset.id == m.id) el.innerHTML = `<p class="note bad" style="margin:0">${esc(err.message)}</p>`; });
+  cargarRep();
+  const rf = $('#repForm', dr);
+  if (rf) {
+    $('#repAdd', dr).onclick = () => { rf.hidden = !rf.hidden; };
+    rf.onsubmit = async e => {
+      e.preventDefault(); const msg = $('#repMsg'); msg.className = ''; msg.textContent = 'Guardando…';
+      const f = rf.elements;
+      try {
+        await window.MV.registrarReparacion(m.id, {tipo: f.tipo.value, fecha: f.fecha.value, taller: f.taller.value, descripcion: f.desc.value, resultado: f.res.value});
+        rf.reset(); rf.hidden = true; msg.textContent = ''; await cargarRep();
+      } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
+    };
+  }
   $('#dx').onclick = closeDrawer; dr.classList.add('on'); scrim.classList.add('on'); dr.scrollTop = 0;
 }
-const refresh = () => ({resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp})[state.view]();
+const VISTAS = {resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp, calidad: renderCalidad, reporte: renderReporte};
+const refresh = () => VISTAS[state.view]();
 function closeDrawer() { dr.classList.remove('on'); scrim.classList.remove('on'); }
 scrim.onclick = closeDrawer;
 
 /* ---------- navegación ---------- */
-const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Repuestos en bodega, reservados, en transporte y en reparación']};
+const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Cobertura de repuestos, reservados, en transporte y en reparación'], calidad: ['Calidad de datos', 'Qué falta o está mal en la planilla, para corregirlo con Mantenimiento'], reporte: ['Reporte', 'Informe listo para imprimir o guardar como PDF']};
 function go(view, filters) {
-  if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', kwMin: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
+  if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', kwMin: '', cal: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
   state.view = view;
   $$('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + view));
   $$('.nav').forEach(n => n.classList.toggle('on', n.dataset.view === view));
   $('#title').textContent = META[view][0]; $('#subtitle').textContent = META[view][1];
-  ({resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp})[view]();
+  VISTAS[view]();
   $('#side').classList.remove('on'); window.scrollTo(0, 0);
 }
 $$('.nav').forEach(n => n.onclick = () => go(n.dataset.view));
@@ -284,5 +410,6 @@ const root = document.documentElement;
 try { root.dataset.theme = localStorage.getItem('mv-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (_) {}
 $('#theme').onclick = () => { root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('mv-theme', root.dataset.theme); } catch (_) {} };
 $('#fCount').textContent = D.length;
+$('#heroSub').textContent = `${D.length} motores · ${[...new Set(D.map(m => m.faena))].join(' · ')}`;
 go('resumen');
 })();
