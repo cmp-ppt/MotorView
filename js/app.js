@@ -10,16 +10,29 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = (n, d = 0) => n == null ? '—' : n.toLocaleString('es-CL', {maximumFractionDigits: d});
 const count = (arr, f) => arr.reduce((m, x) => { const k = f(x); m[k] = (m[k] || 0) + 1; return m; }, {});
-const state = {view:'resumen', q:'', estado:new Set(), area:'', volt:'', montaje:'', kwMin:'', frame:'', tag:'', cols:{}, masOpen:false, sort:'numero', dir:1, limit:80};
+const state = {view:'resumen', q:'', estado:new Set(), area:'', volt:'', kwMin:'', cols:{}, masOpen:true, sort:'numero', dir:1, limit:80};
 const canEdit = () => window.MV.user.rol !== 'consulta';
 
-/* Filtros por columna, como el autofiltro de la planilla: un desplegable por columna
-   (con sus valores reales y "(vacías)") y búsqueda por texto en las columnas de texto libre. */
-const FILTROS_COL = [
-  ['hp', 'HP', 'sel'], ['kw', 'kW', 'sel'], ['amp', 'Corriente (A)', 'sel'], ['voltTxt', 'Voltaje (V)', 'sel'],
-  ['rpm', 'Velocidad (rpm)', 'sel'], ['rodLibre', 'Rodam. lado libre', 'sel'], ['rodCarga', 'Rodam. lado carga', 'sel'],
-  ['cosFi', 'cos φ teórico', 'sel'], ['descripcion', 'Descripción contiene…', 'txt'], ['observaciones', 'Observaciones contiene…', 'txt']];
-const TIPO_COL = Object.fromEntries(FILTROS_COL.map(([k, , t]) => [k, t]));
+/* Columnas de la planilla, con sus mismos encabezados: grupo (t) y subcolumnas (c).
+   Cada subcolumna: [clave, subtítulo, filtro]. El filtro es un desplegable con los valores reales
+   y "(vacías)" ('sel') o una búsqueda por texto ('txt'), como el autofiltro de Excel. */
+const GRUPOS = [
+  {t: 'N° Motor', c: [['numero', 'N°']]},
+  {t: 'Estado', c: [['estado', 'Estado']]},
+  {t: 'Área', c: [['area', 'Área']]},
+  {t: 'Potencia', c: [['hp', 'HP', 'sel'], ['kw', 'kW', 'sel']]},
+  {t: 'Corriente', c: [['amp', 'Amp.', 'sel']]},
+  {t: 'Voltaje Aplic.', c: [['voltTxt', 'Volt', 'sel']]},
+  {t: 'Velocidad', c: [['rpm', '(rpm)', 'sel']]},
+  {t: 'Montaje', c: [['montaje', 'Montaje', 'sel']]},
+  {t: 'Frame', c: [['frame', 'Frame', 'sel']]},
+  {t: 'Rodamientos', c: [['rodLibre', 'Lado Libre', 'sel'], ['rodCarga', 'Lado Carga', 'sel']]},
+  {t: 'coseno fi', c: [['cosFi', 'teórico', 'sel']]},
+  {t: 'Ubicación Actual', c: [['tag', 'Tag', 'txt']]},
+  {t: 'Descripción', c: [['descripcion', 'Descripción', 'txt']]},
+  {t: 'Observaciones', c: [['observaciones', 'Observaciones', 'txt']], soloFiltro: true},
+];
+const TIPO_COL = Object.fromEntries(GRUPOS.flatMap(g => g.c).filter(c => c[2]).map(c => [c[0], c[2]]));
 const VACIO = '__vacio__';
 const vacio = x => x == null || x === '';
 const cmpVal = (a, b) => typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'es', {numeric: true});
@@ -39,10 +52,7 @@ function filtered() {
     (!state.estado.size || state.estado.has(m.estado)) &&
     (!state.area || m.area === state.area) &&
     (!state.volt || voltBand(m) === state.volt) &&
-    (!state.montaje || m.montaje === state.montaje) &&
     (!state.kwMin || (m.kw ?? 0) >= +state.kwMin) &&
-    (!state.frame || m.frame === state.frame) &&
-    (!state.tag || norm(m.tag).includes(norm(state.tag).trim())) &&
     Object.entries(state.cols).every(([k, v]) => !v || coincideCol(m, k, v)) &&
     q.every(t => m._s.includes(t)));
 }
@@ -120,40 +130,63 @@ function renderResumen() {
 }
 
 /* ---------- vista Inventario ---------- */
-const COLS = [['numero','N°'],['estado','Estado'],['tag','TAG'],['descripcion','Descripción'],['area','Ubicación'],['kw','kW'],['hp','HP'],['volt','V'],['rpm','RPM'],['amp','A'],['montaje','Montaje'],['frame','Frame'],['rodLibre','Rodam. libre'],['rodCarga','Rodam. carga'],['cosFi','cos φ']];
+// Cabecera y filtros con la misma estructura de la planilla: grupo (fila 1) y subcolumnas (fila 2).
+// Cada columna: [clave, subtítulo, tipo de filtro ('sel' desplegable | 'txt' texto)]. Sin tipo = sin filtro propio.
+const ORDEN = GRUPOS.filter(g => !g.soloFiltro).flatMap(g => g.c.map(c => c[0]));
+const sk = k => k === 'voltTxt' ? 'volt' : k;                 // el voltaje se ordena por su valor numérico
+const CELDA = {
+  numero: m => `<td><b>${m.numero ?? '—'}</b></td>`,
+  estado: m => `<td><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span></td>`,
+  area: m => `<td>${esc(m.area)}</td>`,
+  hp: m => `<td class="num">${fmt(m.hp, 1)}</td>`,
+  kw: m => `<td class="num">${fmt(m.kw, 1)}</td>`,
+  amp: m => `<td class="num">${fmt(m.amp, 1)}</td>`,
+  voltTxt: m => `<td class="num">${esc(m.voltTxt) || '—'}</td>`,
+  rpm: m => `<td class="num">${fmt(m.rpm)}</td>`,
+  montaje: m => `<td>${esc(m.montaje) || '—'}</td>`,
+  frame: m => `<td>${esc(m.frame) || '—'}</td>`,
+  rodLibre: m => `<td>${esc(m.rodLibre) || '—'}</td>`,
+  rodCarga: m => `<td>${esc(m.rodCarga) || '—'}</td>`,
+  cosFi: m => `<td class="num">${fmt(m.cosFi, 2)}</td>`,
+  tag: m => `<td><span class="tag">${esc(m.tag) || '—'}</span></td>`,
+  descripcion: m => `<td class="desc" title="${esc(m.descripcion)}">${esc(m.descripcion) || '—'}</td>`,
+};
 function renderInventario() {
   const areas = [...new Set(D.map(m => m.area))].sort();
-  const frames = [...new Set(D.map(m => m.frame).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', {numeric: true}));
-  const v = $('#v-inventario');
+  const v = $('#v-inventario'), n = colsActivas();
+  const filtroCol = (g, [k, l, t]) => {
+    const pref = g.c.length > 1 ? `${g.t} ${l}` : g.t, on = state.cols[k] ? 'on' : '';
+    if (t === 'txt') return `<input class="chip ${on}" data-col="${k}" placeholder="${l}" value="${esc(state.cols[k] || '')}" aria-label="${esc(pref)}">`;
+    return `<select class="chip ${on}" data-col="${k}" aria-label="${esc(pref)}"><option value="">${l}</option>${D.some(m => vacio(m[k])) ? `<option value="${VACIO}" ${state.cols[k] === VACIO ? 'selected' : ''}>${pref}: (vacías)</option>` : ''}${valoresDe(k).map(x => `<option value="${esc(String(x))}" ${String(x) === state.cols[k] ? 'selected' : ''}>${esc(pref + ': ' + etiquetaCol(k, x))}</option>`).join('')}</select>`;
+  };
+  const tg = GRUPOS.filter(g => !g.soloFiltro);
+  const th = (k, txt, extra = '') => `<th data-k="${sk(k)}" ${extra} class="${state.sort === sk(k) ? 's' + (state.dir < 0 ? ' d' : '') : ''}">${txt}</th>`;
+  const fila1 = tg.map(g => g.c.length > 1 ? `<th colspan="${g.c.length}" class="grp">${g.t}</th>` : th(g.c[0][0], g.t, 'rowspan="2"')).join('');
+  const fila2 = tg.filter(g => g.c.length > 1).map(g => g.c.map(([k, l]) => th(k, l)).join('')).join('');
   v.innerHTML = `
   <div class="tools">
     ${ESTADOS.map(e => `<button class="chip ${state.estado.has(e.k) ? 'on' : ''}" data-e="${e.k}"><i style="background:${e.c}"></i>${e.k}</button>`).join('')}
     <select class="chip ${state.area ? 'on' : ''}" id="fArea"><option value="">Todas las áreas</option>${areas.map(a => `<option ${a === state.area ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
-    <select class="chip ${state.volt ? 'on' : ''}" id="fVolt"><option value="">Toda tensión</option>${['Baja tensión', 'Media tensión (4 kV)'].map(a => `<option ${a === state.volt ? 'selected' : ''}>${a}</option>`).join('')}</select>
-    <select class="chip ${state.montaje ? 'on' : ''}" id="fMont"><option value="">Montaje</option><option ${state.montaje === 'horizontal' ? 'selected' : ''}>horizontal</option><option ${state.montaje === 'vertical' ? 'selected' : ''}>vertical</option></select>
-    <select class="chip ${state.kwMin ? 'on' : ''}" id="fKw"><option value="">Potencia</option>${[1, 5, 15, 37, 75, 200].map(k => `<option value="${k}" ${+state.kwMin === k ? 'selected' : ''}>≥ ${k} kW</option>`).join('')}</select>
-    <select class="chip ${state.frame ? 'on' : ''}" id="fFrame"><option value="">Frame</option>${frames.map(a => `<option ${a === state.frame ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
-    <input class="chip ${state.tag ? 'on' : ''}" id="fTag" placeholder="TAG contiene…" value="${esc(state.tag)}" style="width:150px">
-    <button class="chip ${colsActivas() ? 'on' : ''}" id="fMas">Más filtros${colsActivas() ? ' (' + colsActivas() + ')' : ''} ▾</button>
+    ${state.kwMin ? `<button class="chip on" data-quit="kwMin">Potencia ≥ ${esc(state.kwMin)} kW ✕</button>` : ''}
+    ${state.volt ? `<button class="chip on" data-quit="volt">${esc(state.volt)} ✕</button>` : ''}
+    <button class="chip ${n ? 'on' : ''}" id="fMas">Filtros por columna${n ? ' (' + n + ')' : ''} ▾</button>
     <button class="clear" id="clr">Limpiar</button><span class="count" id="cnt"></span>
     <button class="btn sec" id="csv">Exportar CSV</button>
   </div>
-  <div class="tools" id="colsPanel" ${state.masOpen || colsActivas() ? '' : 'hidden'}>${FILTROS_COL.map(([k, l, t]) => t === 'txt'
-    ? `<input class="chip ${state.cols[k] ? 'on' : ''}" data-col="${k}" placeholder="${l}" value="${esc(state.cols[k] || '')}" style="width:190px">`
-    : `<select class="chip ${state.cols[k] ? 'on' : ''}" data-col="${k}"><option value="">${l}</option>${D.some(m => vacio(m[k])) ? `<option value="${VACIO}" ${state.cols[k] === VACIO ? 'selected' : ''}>${l}: (vacías)</option>` : ''}${valoresDe(k).map(x => `<option value="${esc(String(x))}" ${String(x) === state.cols[k] ? 'selected' : ''}>${esc(l + ': ' + etiquetaCol(k, x))}</option>`).join('')}</select>`).join('')}</div>
-  <div class="card tablewrap"><table><thead><tr>${COLS.map(([k, l]) => `<th data-k="${k}" class="${state.sort === k ? 's' + (state.dir < 0 ? ' d' : '') : ''}">${l}</th>`).join('')}</tr></thead><tbody id="tb"></tbody></table><div id="mr"></div></div>`;
+  <div class="tools cols" id="colsPanel" ${state.masOpen ? '' : 'hidden'}>${GRUPOS.filter(g => g.c.some(c => c[2])).map(g => `<fieldset class="fg"><legend>${g.t}</legend>${g.c.filter(c => c[2]).map(c => filtroCol(g, c)).join('')}</fieldset>`).join('')}</div>
+  <div class="card tablewrap"><table><thead><tr>${fila1}</tr>${fila2 ? `<tr>${fila2}</tr>` : ''}</thead><tbody id="tb"></tbody></table><div id="mr"></div></div>`;
   $$('[data-e]', v).forEach(b => b.onclick = () => { const k = b.dataset.e; state.estado.has(k) ? state.estado.delete(k) : state.estado.add(k); state.limit = 80; renderInventario(); });
-  $('#fMas').onclick = () => { state.masOpen = !(state.masOpen || colsActivas()); if (!state.masOpen) state.cols = {}; renderInventario(); };
+  $$('[data-quit]', v).forEach(b => b.onclick = () => { state[b.dataset.quit] = ''; state.limit = 80; renderInventario(); });
+  $('#fMas').onclick = () => { state.masOpen = !state.masOpen; renderInventario(); };
   $$('[data-col]', v).forEach(el => {
     const k = el.dataset.col;
     if (el.tagName === 'INPUT') el.oninput = e => { state.cols[k] = e.target.value; state.limit = 80; e.target.classList.toggle('on', !!e.target.value); fillRows(); };
     else el.onchange = e => { state.cols[k] = e.target.value; state.limit = 80; renderInventario(); };
   });
-  $('#fTag').oninput = e => { state.tag = e.target.value; state.limit = 80; e.target.classList.toggle('on', !!state.tag); fillRows(); };
-  [['fArea','area'],['fVolt','volt'],['fMont','montaje'],['fKw','kwMin'],['fFrame','frame']].forEach(([id, k]) => $('#' + id).onchange = e => { state[k] = e.target.value; state.limit = 80; renderInventario(); });
-  $('#clr').onclick = () => { Object.assign(state, {q:'', estado:new Set(), area:'', volt:'', montaje:'', kwMin:'', frame:'', tag:'', cols:{}}); $('#gsearch').value = ''; renderInventario(); };
+  $('#fArea').onchange = e => { state.area = e.target.value; state.limit = 80; renderInventario(); };
+  $('#clr').onclick = () => { Object.assign(state, {q:'', estado:new Set(), area:'', volt:'', kwMin:'', cols:{}}); $('#gsearch').value = ''; renderInventario(); };
   $('#csv').onclick = exportCSV;
-  $$('th', v).forEach(th => th.onclick = () => { const k = th.dataset.k; state.dir = state.sort === k ? -state.dir : 1; state.sort = k; renderInventario(); });
+  $$('th[data-k]', v).forEach(th => th.onclick = () => { const k = th.dataset.k; state.dir = state.sort === k ? -state.dir : 1; state.sort = k; renderInventario(); });
   fillRows();
 }
 function fillRows() {
@@ -161,7 +194,7 @@ function fillRows() {
   rows.sort((a, b) => { const x = a[k], y = b[k]; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'es', {numeric: true})) * state.dir; });
   $('#cnt').textContent = `${rows.length} de ${D.length} motores`;
   const tb = $('#tb');
-  tb.innerHTML = rows.length ? rows.slice(0, state.limit).map(m => `<tr data-id="${m.id}"><td><b>${m.numero ?? '—'}</b></td><td><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span></td><td><span class="tag">${esc(m.tag) || '—'}</span></td><td class="desc" title="${esc(m.descripcion)}">${esc(m.descripcion) || '—'}</td><td>${esc(m.area)}</td><td class="num">${fmt(m.kw, 1)}</td><td class="num">${fmt(m.hp, 1)}</td><td class="num">${esc(m.voltTxt) || '—'}</td><td class="num">${fmt(m.rpm)}</td><td class="num">${fmt(m.amp, 1)}</td><td>${esc(m.montaje) || '—'}</td><td>${esc(m.frame) || '—'}</td><td>${esc(m.rodLibre) || '—'}</td><td>${esc(m.rodCarga) || '—'}</td><td class="num">${fmt(m.cosFi, 2)}</td></tr>`).join('') : `<tr><td colspan="15" class="empty">Sin resultados con estos filtros</td></tr>`;
+  tb.innerHTML = rows.length ? rows.slice(0, state.limit).map(m => `<tr data-id="${m.id}">${ORDEN.map(c => CELDA[c](m)).join('')}</tr>`).join('') : `<tr><td colspan="${ORDEN.length}" class="empty">Sin resultados con estos filtros</td></tr>`;
   $$('tr[data-id]', tb).forEach(r => r.onclick = () => openDrawer(+r.dataset.id));
   $('#mr').innerHTML = rows.length > state.limit ? `<button class="btn sec more" id="more">Mostrar más (${rows.length - state.limit} restantes)</button>` : '';
   const mb = $('#more'); if (mb) mb.onclick = () => { state.limit += 120; fillRows(); };
@@ -235,7 +268,7 @@ scrim.onclick = closeDrawer;
 /* ---------- navegación ---------- */
 const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Repuestos en bodega, reservados, en transporte y en reparación']};
 function go(view, filters) {
-  if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', montaje: '', kwMin: '', frame: '', tag: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
+  if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', kwMin: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
   state.view = view;
   $$('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + view));
   $$('.nav').forEach(n => n.classList.toggle('on', n.dataset.view === view));
