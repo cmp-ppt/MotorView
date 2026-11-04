@@ -18,7 +18,6 @@ los usuarios y el login en **Supabase**.
   sin criticidad). Cada problema abre la lista de motores afectados.
 - **Reparaciones y rebobinados:** historial por motor (tipo, fecha, taller, trabajo, pruebas y garantía), solo se agrega.
 - **Criticidad A, B o C** por motor, con un indicador de críticos por área.
-- **Reporte** para imprimir o guardar como PDF: resumen, motores fuera de servicio, críticos, tipos sin repuesto y calidad de datos.
 - **Edición con historial:** cada cambio de estado, ubicación, criticidad u observaciones queda con quién, cuándo, valor anterior y motivo.
   La fecha y el usuario los pone la base de datos, no el navegador.
 - Estados: En servicio, Taller, Repuesto, Reservado, En transporte, De baja.
@@ -53,6 +52,8 @@ En `js/config.js` pega la **Project URL** y la clave **anon / publishable** (Pro
 
 ### 3. Publicar
 Settings → Pages → *Deploy from a branch* → `main` / `(root)`.
+
+Los archivos se cargan con un número de versión (`?v=…` en `index.html`). **Al cambiar CSS o JavaScript, sube ese número** en todos los enlaces: así el navegador no mezcla archivos nuevos con copias viejas guardadas.
 
 Para probarlo en local, sírvelo (no abras el archivo con doble clic): `python3 -m http.server 8000`.
 
@@ -95,7 +96,7 @@ js/sesion.js            login, renovación y cierre de sesión (Supabase Auth)
 js/nube.js              lectura y escritura de motores, perfil, historial y reparaciones (PostgREST)
 js/analisis.js          calidad de datos, cobertura de repuestos y criticidad (funciones puras)
 js/boot.js              arranque: configuración, login y carga de datos
-js/app.js               vistas: resumen, inventario, disponibilidad, calidad, reporte y ficha
+js/app.js               vistas: resumen, inventario, disponibilidad, calidad y ficha
 img/cmp.jpg             logo de CMP
 supabase/esquema.sql    tablas, disparadores de historial y reparaciones, y políticas RLS
 tools/build_seed_sql.py Excel → SQL de carga inicial

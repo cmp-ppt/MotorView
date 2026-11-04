@@ -286,29 +286,6 @@ function renderDisp() {
   $$('[data-cov]', root).forEach(e => e.onclick = () => { const x = cov[+e.dataset.cov]; go('inventario', {cols: {kw: String(x.kw), ...(x.voltTxt ? {voltTxt: x.voltTxt} : {})}}); });
 }
 
-/* ---------- vista Reporte (para imprimir o guardar como PDF) ---------- */
-function renderReporte() {
-  const por = count(D, m => m.estado), fuera = D.filter(m => ['Taller', 'Reservado', 'En transporte'].includes(m.estado)).sort((a, b) => (b.kw || 0) - (a.kw || 0));
-  const cov = A.cobertura(D).filter(x => x.sinRespaldo).slice(0, 12), crit = D.filter(m => m.criticidad === 'A' && m.estado !== 'En servicio' && m.estado !== 'De baja');
-  const cal = A.calidad(D), hoy = new Date().toLocaleDateString('es-CL', {day: 'numeric', month: 'long', year: 'numeric'});
-  const fila = m => `<tr><td>${m.numero ?? '—'}</td><td>${esc(m.tag || '—')}</td><td>${esc(m.descripcion || '—')}</td><td>${esc(m.area)}</td><td class="num">${fmt(m.kw, 1)}</td><td>${m.estado}</td><td>${m.criticidad || '—'}</td><td>${esc(m.observaciones || '')}</td></tr>`;
-  const tabla = ms => ms.length ? `<table class="rt"><thead><tr><th>N°</th><th>TAG</th><th>Descripción</th><th>Área</th><th class="num">kW</th><th>Estado</th><th>Crit.</th><th>Observaciones</th></tr></thead><tbody>${ms.map(fila).join('')}</tbody></table>` : '<p class="note">Ninguno.</p>';
-  $('#v-reporte').innerHTML = `
-  <div class="noprint repbar"><button class="btn" id="imprimir">Imprimir o guardar como PDF</button><span class="sub">Se genera con los datos actuales. En el cuadro de impresión elige "Guardar como PDF".</span></div>
-  <article class="doc">
-    <header class="doch"><img src="img/cmp.jpg" alt="CMP, una empresa del grupo CAP" width="131" height="71"><div><h2>Informe de motores eléctricos</h2><p>${esc([...new Set(D.map(m => m.faena))].join(' · '))} · ${hoy}</p><p class="sub">Preparado por ${esc(window.MV.user.nombre)}</p></div></header>
-    <h3>Resumen</h3>
-    <table class="rt"><thead><tr>${ESTADOS.map(e => `<th class="num">${e.k}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody><tr>${ESTADOS.map(e => `<td class="num">${por[e.k] || 0}</td>`).join('')}<td class="num"><b>${D.length}</b></td></tr></tbody></table>
-    <h3>Motores fuera de servicio (${fuera.length})</h3><p class="sub">En taller, reservados o en transporte.</p>${tabla(fuera)}
-    <h3>Motores críticos (A) fuera de servicio (${crit.length})</h3>${tabla(crit)}
-    <h3>Tipos de motor sin repuesto (${A.cobertura(D).filter(x => x.sinRespaldo).length})</h3>
-    ${cov.length ? `<table class="rt"><thead><tr><th>Tipo</th><th class="num">En servicio</th><th class="num">Críticos (A)</th></tr></thead><tbody>${cov.map(x => `<tr><td>${fmt(x.kw, 1)} kW · ${x.voltTxt ? esc(x.voltTxt) + ' V' : 's/d'} · ${x.polos ? x.polos + ' polos' : 's/d'}</td><td class="num">${x.servicio}</td><td class="num">${x.criticos || '—'}</td></tr>`).join('')}</tbody></table>${A.cobertura(D).filter(x => x.sinRespaldo).length > 12 ? '<p class="sub">Se muestran los 12 con más riesgo.</p>' : ''}` : '<p class="note">Todos los tipos en servicio tienen repuesto.</p>'}
-    <h3>Calidad de los datos</h3>
-    <table class="rt"><thead><tr><th>Problema</th><th class="num">Motores</th></tr></thead><tbody>${cal.map(p => `<tr><td>${esc(p.t)}</td><td class="num">${p.n}</td></tr>`).join('')}</tbody></table>
-  </article>`;
-  $('#imprimir').onclick = () => window.print();
-}
-
 /* ---------- ficha de motor ---------- */
 const dr = $('#drawer'), scrim = $('#scrim');
 function compat(m) {
@@ -386,13 +363,13 @@ function openDrawer(id) {
   }
   $('#dx').onclick = closeDrawer; dr.classList.add('on'); scrim.classList.add('on'); dr.scrollTop = 0;
 }
-const VISTAS = {resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp, calidad: renderCalidad, reporte: renderReporte};
+const VISTAS = {resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp, calidad: renderCalidad};
 const refresh = () => VISTAS[state.view]();
 function closeDrawer() { dr.classList.remove('on'); scrim.classList.remove('on'); }
 scrim.onclick = closeDrawer;
 
 /* ---------- navegación ---------- */
-const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Cobertura de repuestos, reservados, en transporte y en reparación'], calidad: ['Calidad de datos', 'Qué falta o está mal en la planilla, para corregirlo con Mantenimiento'], reporte: ['Reporte', 'Informe listo para imprimir o guardar como PDF']};
+const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Cobertura de repuestos, reservados, en transporte y en reparación'], calidad: ['Calidad de datos', 'Qué falta o está mal en la planilla, para corregirlo con Mantenimiento']};
 function go(view, filters) {
   if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', kwMin: '', cal: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
   state.view = view;
