@@ -4,6 +4,9 @@
   const $ = s => document.querySelector(s);
   const ROLES = { admin: 'Administrador', mantenimiento: 'Mantenimiento', consulta: 'Solo lectura' };
   const cfg = window.CONFIG_NUBE || {};
+  // Versión de los archivos (viene en la dirección de este script): app.js se carga con la misma,
+  // para no mezclar una copia vieja guardada en el navegador con archivos nuevos.
+  const VERSION = (document.currentScript && document.currentScript.src.split('?')[1]) || '';
 
   async function entrar(s) {
     const p = await window.NUBE.perfil(s.id);
@@ -17,7 +20,7 @@
     $('#whoName').textContent = user.nombre;
     $('#whoRole').textContent = ROLES[user.rol] || user.rol;
     $('#logout').onclick = () => window.SESION.salir().finally(() => location.reload());
-    const s2 = document.createElement('script'); s2.src = 'js/app.js'; document.body.appendChild(s2);
+    const s2 = document.createElement('script'); s2.src = 'js/app.js' + (VERSION ? '?' + VERSION : ''); document.body.appendChild(s2);
   }
 
   function login(mensaje) {

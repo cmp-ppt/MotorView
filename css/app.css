@@ -213,28 +213,6 @@ table.cov{min-width:780px}.cov th.num,.cov td.num{text-align:right}.cov tbody tr
 .repform[hidden]{display:none}
 #repAdd{margin-bottom:12px}
 
-/* ===== reporte ===== */
-.repbar{display:flex;gap:14px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
-.doc{--ink:#1b2430;--ink2:#5b6675;--line:#e6e1d8;--panel2:#faf8f5;background:#fff;color:#1b2430;border:1px solid var(--line);border-radius:16px;padding:32px 36px;box-shadow:var(--shadow)}
-.doch{display:flex;gap:22px;align-items:center;border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:6px}
-.doch img{width:110px;height:auto}.doch h2{margin:0;font-size:22px}.doch p{margin:3px 0}
-.doc h3{margin:22px 0 8px;font-size:15px}
-table.rt{min-width:0;width:100%;font-size:12.5px}
-.rt th{position:static;background:#f1ede6;color:#1b2430;cursor:default;padding:8px 10px}.rt td{white-space:normal;padding:7px 10px;border-bottom:1px solid #e6e1d8}.rt .num{text-align:right}
-@media(max-width:700px){.doc{padding:20px 16px;overflow-x:auto}}
-
-/* ===== impresión (el reporte sale limpio: sin menú, encabezado ni botones) ===== */
-@media print{
-  body{display:block;background:#fff}
-  .side,.top,.hero,.noprint,.scrim,.drawer,.tip,.login,.burger{display:none !important}
-  main{padding:0}
-  .view{display:none !important}
-  #v-reporte{display:block !important;animation:none}
-  .doc{border:0;box-shadow:none;padding:0;border-radius:0}
-  .doc h3{break-after:avoid}.rt tr{break-inside:avoid}.rt thead{display:table-header-group}
-  @page{margin:14mm}
-}
-
 /* ===== ajustes ===== */
 .kv b .mic{display:inline-block;margin-right:6px}
 .kv b .mic .ico{vertical-align:-4px}
