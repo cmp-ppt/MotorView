@@ -9,15 +9,32 @@
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+<!-- Relieve minero (siluetas dibujadas para MotorView): montañas, banco de explotación escalonado y planta -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="relieve" viewBox="0 0 1200 220" preserveAspectRatio="xMidYMax slice">
+      <path fill="currentColor" fill-opacity=".20" d="M0 150 L90 105 L160 130 L260 78 L340 118 L430 66 L540 124 L640 88 L740 128 L850 72 L950 112 L1060 82 L1200 126 V220 H0Z"/>
+      <path fill="currentColor" fill-opacity=".36" d="M0 178 L120 142 L220 162 L330 126 L450 164 L560 136 L690 168 L800 132 L930 164 L1040 142 L1200 172 V220 H0Z"/>
+      <path fill="currentColor" fill-opacity=".60" d="M700 220 L742 186 L774 186 L806 162 L838 162 L870 138 L902 138 L934 114 L966 114 L998 138 L1030 138 L1062 162 L1094 162 L1126 186 L1158 186 L1190 220Z"/>
+      <path fill="currentColor" fill-opacity=".75" d="M40 220 V176 H92 V152 H138 V176 H176 V220Z M104 152 V112 H118 V152Z M150 176 V140 H160 V176Z"/>
+    </symbol>
+  </defs>
+</svg>
+
 <aside class="side" id="side">
   <div class="brand">
-    <div class="logo"><svg viewBox="0 0 32 32"><path d="M17 4 7 19h7l-1.5 9L24 12h-7z"/></svg></div>
-    <div><b>MotorView</b><small>CMP · Área Eléctrica</small></div>
+    <div class="cmpplate"><img src="img/cmp.jpg" alt="CMP, una empresa del grupo CAP" width="131" height="71"></div>
+    <div class="prod">
+      <div class="logo"><svg viewBox="0 0 32 32"><path d="M17 4 7 19h7l-1.5 9L24 12h-7z"/></svg></div>
+      <div><b>MotorView</b><small>Área Eléctrica</small></div>
+    </div>
   </div>
   <nav>
     <button class="nav on" data-view="resumen"><svg viewBox="0 0 24 24"><path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/></svg>Resumen</button>
     <button class="nav" data-view="inventario"><svg viewBox="0 0 24 24"><path d="M3 5h18v3H3zm0 5.5h18v3H3zM3 16h18v3H3z"/></svg>Inventario</button>
     <button class="nav" data-view="disponibilidad"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.700 8 11 4.600-1.300 8-6 8-11V5zm-1 14-4-4 1.400-1.400L11 13.200l4.600-4.600L17 10z"/></svg>Disponibilidad</button>
+    <button class="nav" data-view="calidad"><svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-9 14-4-4 1.400-1.400L10 14.200l6.600-6.600L18 9z"/></svg>Calidad de datos</button>
+    <button class="nav" data-view="reporte"><svg viewBox="0 0 24 24"><path d="M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8zm3-7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12z"/></svg>Reporte</button>
   </nav>
   <div class="faenas">
     <span class="lbl">Faena</span>
@@ -35,6 +52,41 @@
 </aside>
 
 <main>
+  <section class="hero" aria-label="MotorView">
+    <svg class="relieve" aria-hidden="true"><use href="#relieve" width="100%" height="100%"/></svg>
+    <div class="hero-t">
+      <small>Compañía Minera del Pacífico</small>
+      <h2>Gestión de motores eléctricos</h2>
+      <p id="heroSub"></p>
+    </div>
+    <svg class="motor" viewBox="0 0 380 230" aria-hidden="true">
+      <defs>
+        <linearGradient id="mgBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b8aae"/><stop offset=".55" stop-color="#405b7c"/><stop offset="1" stop-color="#2a3d57"/></linearGradient>
+        <linearGradient id="mgShaft" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef2f7"/><stop offset=".5" stop-color="#b3bdcb"/><stop offset="1" stop-color="#7f8b9b"/></linearGradient>
+      </defs>
+      <ellipse cx="190" cy="210" rx="172" ry="9" fill="#000" opacity=".30"/>
+      <rect x="70" y="194" width="226" height="10" rx="3" fill="#22324a"/>
+      <rect x="96" y="180" width="44" height="14" rx="3" fill="#2a3d57"/>
+      <rect x="226" y="180" width="44" height="14" rx="3" fill="#2a3d57"/>
+      <rect x="82" y="80" width="196" height="104" rx="16" fill="url(#mgBody)"/>
+      <g stroke="#1c2c42" stroke-opacity=".42" stroke-width="3" stroke-linecap="round">
+        <path d="M102 90v84M116 90v84M130 90v84M144 90v84M158 90v84M172 90v84M186 90v84M200 90v84M214 90v84M228 90v84M242 90v84M256 90v84"/>
+      </g>
+      <rect x="82" y="80" width="196" height="9" rx="4" fill="#fff" opacity=".13"/>
+      <rect x="274" y="94" width="50" height="76" rx="12" fill="#2f4766"/>
+      <g stroke="#a9bdd4" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"><path d="M283 110h32M283 126h32M283 142h32M283 158h32"/></g>
+      <rect x="60" y="94" width="28" height="76" rx="9" fill="#35506f"/>
+      <rect x="20" y="125" width="44" height="14" rx="3" fill="url(#mgShaft)"/>
+      <path class="rot" d="M26 132h36" stroke="#1c2c42" stroke-opacity=".5" stroke-width="12" stroke-dasharray="3 6" fill="none"/>
+      <rect x="150" y="50" width="70" height="34" rx="6" fill="#e8742a"/>
+      <rect x="156" y="56" width="58" height="6" rx="3" fill="#ffb27a" opacity=".7"/>
+      <rect x="178" y="38" width="14" height="14" rx="3" fill="#22324a"/>
+      <rect x="212" y="108" width="46" height="34" rx="4" fill="#f4f1ec"/>
+      <g fill="#8a95a5"><rect x="218" y="115" width="34" height="3" rx="1.500"/><rect x="218" y="122" width="26" height="3" rx="1.500"/><rect x="218" y="129" width="30" height="3" rx="1.500"/></g>
+      <path d="M124 104l-14 20h10l-4 16 16-23h-10z" fill="#ffd9bf" opacity=".9"/>
+    </svg>
+  </section>
+
   <header class="top">
     <button class="burger" id="burger" aria-label="Menú"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
     <div><h1 id="title">Resumen</h1><p id="subtitle"></p></div>
@@ -47,6 +99,8 @@
   <section class="view on" id="v-resumen"></section>
   <section class="view" id="v-inventario"></section>
   <section class="view" id="v-disponibilidad"></section>
+  <section class="view" id="v-calidad"></section>
+  <section class="view" id="v-reporte"></section>
 </main>
 
 <div class="scrim" id="scrim"></div>
@@ -54,9 +108,10 @@
 <div class="tip" id="tip"></div>
 
 <div class="login" id="login" hidden>
+  <svg class="relieve" aria-hidden="true"><use href="#relieve" width="100%" height="100%"/></svg>
   <form class="lcard" id="lform" autocomplete="on">
-    <div class="logo"><svg viewBox="0 0 32 32"><path d="M17 4 7 19h7l-1.5 9L24 12h-7z"/></svg></div>
-    <h2>MotorView CMP</h2>
+    <img class="cmplogin" src="img/cmp.jpg" alt="CMP, una empresa del grupo CAP" width="131" height="71">
+    <h2>MotorView</h2>
     <p>Gestión de motores eléctricos · Compañía Minera del Pacífico</p>
     <label>Correo<input id="lu" name="username" type="email" autocomplete="username" autocapitalize="none" required></label>
     <label>Contraseña<input id="lp" name="password" type="password" autocomplete="current-password" required></label>
@@ -68,6 +123,7 @@
 <script src="js/config.js"></script>
 <script src="js/sesion.js"></script>
 <script src="js/nube.js"></script>
+<script src="js/analisis.js"></script>
 <script src="js/boot.js"></script>
 </body>
 </html>

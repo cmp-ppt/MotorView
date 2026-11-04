@@ -141,3 +141,112 @@ thead tr:nth-child(2) th{top:39px}
 table{min-width:1300px}
 .side{overflow-y:auto}
 .faena{line-height:1.25}
+
+/* ===== logo CMP y marca ===== */
+.brand{flex-direction:column;align-items:stretch;gap:14px;padding:0 2px}
+.cmpplate{background:#fff;border-radius:14px;padding:9px 12px;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.cmpplate img{width:128px;height:auto;display:block}
+.prod{display:flex;gap:12px;align-items:center;padding:0 4px}
+.prod .logo{width:36px;height:36px;border-radius:11px}.prod .logo svg{width:20px}
+
+/* ===== encabezado con motor y relieve minero ===== */
+.hero{position:relative;overflow:hidden;border-radius:20px;margin-top:24px;min-height:176px;padding:24px 34px;display:flex;align-items:center;justify-content:space-between;gap:20px;color:#fff;
+  background:linear-gradient(180deg,#13253b 0%,#2b4162 46%,#c9602a 118%);box-shadow:var(--shadow)}
+.hero .relieve{position:absolute;inset:0;width:100%;height:100%;color:#0a1522;pointer-events:none}
+.hero-t{position:relative;z-index:1;max-width:520px}
+.hero-t small{letter-spacing:.14em;text-transform:uppercase;font-size:11.5px;opacity:.78}
+.hero-t h2{margin:6px 0 8px;font-size:30px;letter-spacing:-.5px;line-height:1.1}
+.hero-t p{margin:0;opacity:.85}
+.motor{position:relative;z-index:1;width:290px;flex:none;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
+.rot{animation:rot .7s linear infinite}@keyframes rot{to{stroke-dashoffset:-9}}
+@media (prefers-reduced-motion:reduce){.rot{animation:none}.view{animation:none}}
+@media(max-width:860px){.hero{padding:18px 20px;min-height:140px}.hero-t h2{font-size:22px}.motor{width:170px}}
+@media(max-width:560px){.motor{display:none}}
+.top{margin-top:6px}
+
+/* ===== login ===== */
+.login .relieve{position:absolute;left:0;right:0;bottom:0;width:100%;height:46%;color:#08111b;pointer-events:none}
+.lcard{position:relative;z-index:1}
+.cmplogin{width:128px;height:auto;display:block;margin:0 auto 2px}
+
+/* ===== íconos y piezas pequeñas ===== */
+.ico{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;width:20px;height:20px}
+.mic{display:inline-block;vertical-align:middle;margin-right:6px;color:var(--ink2)}.mic .ico{width:18px;height:18px}
+.muted{color:var(--ink2)}.bad{color:#d23c3c}
+.crit{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:8px;font-weight:700;font-size:12px;color:#fff;background:var(--c)}
+.sec h4 .muted{text-transform:none;letter-spacing:0;font-weight:500;margin-left:4px}
+.seccion{margin:6px 0 12px;font-size:15px}
+
+/* ===== tarjetas por faena ===== */
+.faenas-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-bottom:18px}
+.fcard{display:flex;flex-direction:column;gap:7px;text-align:left;padding:16px;cursor:pointer;font:inherit;color:inherit;transition:.2s}
+.fcard:hover{transform:translateY(-3px)}
+.fcard .ico{width:26px;height:26px;color:var(--accent)}
+.fcard h4{margin:4px 0 0;font-size:14px}
+.fn{font-size:24px;font-weight:700;line-height:1}.fn small{font-size:12px;color:var(--ink2);font-weight:500}
+.fbar{display:flex;height:8px;border-radius:5px;overflow:hidden;background:var(--panel2)}.fbar span{height:100%}
+.fleg{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:11.5px;color:var(--ink2)}.fleg i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px}
+.fcard.off{opacity:.55;border-style:dashed;cursor:default}.fcard.off:hover{transform:none}.fcard.off .ico{color:var(--ink2)}.fcard.off small{color:var(--ink2)}
+
+/* ===== críticos por área ===== */
+.crits{display:flex;flex-direction:column;gap:6px}
+.crits button{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 12px;text-align:left}
+.crits button:hover{border-color:var(--accent)}
+
+/* ===== calidad de datos ===== */
+.row2c{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);margin-bottom:18px}
+@media(max-width:1100px){.row2c{grid-template-columns:1fr}}
+.qhead{display:flex;gap:22px;align-items:center}
+.ring{width:130px;flex:none}.ring .rb{fill:none;stroke:var(--line);stroke-width:12}.ring .rf{fill:none;stroke:var(--ok);stroke-width:12;stroke-linecap:round}
+.ring .c1{font-size:26px;font-weight:700;fill:var(--ink)}.ring .c2{font-size:11px;fill:var(--ink2)}
+.qgrid{grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+.qcard h4{margin:0 0 8px;font-size:14px}.qn{font-size:32px;font-weight:700;line-height:1}.qn small{font-size:13px;color:var(--ink2);font-weight:500}
+.qbar{height:7px;border-radius:4px;background:var(--panel2);overflow:hidden;margin:10px 0}.qbar span{display:block;height:100%;background:#d23c3c}.qcard.ok .qbar span{background:var(--ok)}
+.qcard p{margin:6px 0;color:var(--ink2);font-size:13px}.qcard .como{color:var(--ink)}.qcard .btn{margin-top:8px}
+
+/* ===== cobertura de repuestos ===== */
+.covwrap{max-height:420px;overflow:auto;margin-top:14px;border:1px solid var(--line);border-radius:12px}
+table.cov{min-width:780px}.cov th.num,.cov td.num{text-align:right}.cov tbody tr{cursor:pointer}
+
+/* ===== reparaciones en la ficha ===== */
+.repform{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
+.repform[hidden]{display:none}
+#repAdd{margin-bottom:12px}
+
+/* ===== reporte ===== */
+.repbar{display:flex;gap:14px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.doc{--ink:#1b2430;--ink2:#5b6675;--line:#e6e1d8;--panel2:#faf8f5;background:#fff;color:#1b2430;border:1px solid var(--line);border-radius:16px;padding:32px 36px;box-shadow:var(--shadow)}
+.doch{display:flex;gap:22px;align-items:center;border-bottom:3px solid var(--accent);padding-bottom:16px;margin-bottom:6px}
+.doch img{width:110px;height:auto}.doch h2{margin:0;font-size:22px}.doch p{margin:3px 0}
+.doc h3{margin:22px 0 8px;font-size:15px}
+table.rt{min-width:0;width:100%;font-size:12.5px}
+.rt th{position:static;background:#f1ede6;color:#1b2430;cursor:default;padding:8px 10px}.rt td{white-space:normal;padding:7px 10px;border-bottom:1px solid #e6e1d8}.rt .num{text-align:right}
+@media(max-width:700px){.doc{padding:20px 16px;overflow-x:auto}}
+
+/* ===== impresión (el reporte sale limpio: sin menú, encabezado ni botones) ===== */
+@media print{
+  body{display:block;background:#fff}
+  .side,.top,.hero,.noprint,.scrim,.drawer,.tip,.login,.burger{display:none !important}
+  main{padding:0}
+  .view{display:none !important}
+  #v-reporte{display:block !important;animation:none}
+  .doc{border:0;box-shadow:none;padding:0;border-radius:0}
+  .doc h3{break-after:avoid}.rt tr{break-inside:avoid}.rt thead{display:table-header-group}
+  @page{margin:14mm}
+}
+
+/* ===== ajustes ===== */
+.kv b .mic{display:inline-block;margin-right:6px}
+.kv b .mic .ico{vertical-align:-4px}
+.faenas-g{align-items:start}
+.fcard.off{padding:13px 16px}
+@media(max-width:860px){
+  .top{flex-wrap:wrap;gap:10px}
+  .search{order:9;flex:1 1 100%;width:100%}
+  .top .spacer{display:block;flex:1}
+}
+@media(max-width:560px){
+  .faenas-g{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .fcard{padding:12px}.fcard.off{padding:10px 12px}.fcard h4{font-size:13px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi .v{font-size:26px}
+}

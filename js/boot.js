@@ -9,7 +9,8 @@
     const p = await window.NUBE.perfil(s.id);
     if (!p) { await window.SESION.salir(); throw new Error('Tu cuenta existe pero no tiene acceso a MotorView. Pide al administrador que te asigne un perfil.'); }
     const user = { email: s.email, nombre: p.nombre, rol: p.rol };
-    window.MV = { user, guardar: window.NUBE.guardar, historial: window.NUBE.historial };
+    window.MV = { user, guardar: window.NUBE.guardar, historial: window.NUBE.historial, reparaciones: window.NUBE.reparaciones,
+                  registrarReparacion: window.NUBE.registrarReparacion, tiposReparacion: window.NUBE.TIPOS_REPARACION };
     window.MOTORES = await window.NUBE.motores();
     $('#login').hidden = true;
     $('#whoAv').textContent = user.nombre.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
