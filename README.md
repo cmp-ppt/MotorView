@@ -97,7 +97,7 @@ js/nube.js              lectura y escritura de motores, perfil, historial y repa
 js/analisis.js          calidad de datos, cobertura de repuestos y criticidad (funciones puras)
 js/boot.js              arranque: configuración, login y carga de datos
 js/app.js               vistas: resumen, inventario, disponibilidad, calidad y ficha
-img/cmp.jpg             logo de CMP
+img/cmp.png             logo de CMP
 supabase/esquema.sql    tablas, disparadores de historial y reparaciones, y políticas RLS
 tools/build_seed_sql.py Excel → SQL de carga inicial
 tests/                  pruebas de sesión, mapeo de datos y análisis
@@ -107,4 +107,4 @@ tests/                  pruebas de sesión, mapeo de datos y análisis
 Carga de las demás faenas y traspaso de motores entre ellas, etiquetas QR por motor, gestión de usuarios desde la interfaz,
 carga de planillas por el administrador, respaldos y campos adicionales de la ficha.
 
-El logo de CMP (`img/cmp.jpg`) es marca de la compañía y se usa con su autorización.
+El logo de CMP (`img/cmp.png`) es marca de la compañía y se usa con su autorización.
