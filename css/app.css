@@ -232,3 +232,8 @@ table.cov{min-width:780px}.cov th.num,.cov td.num{text-align:right}.cov tbody tr
 /* ===== logo de CMP (PNG con fondo transparente, 179×73) ===== */
 .cmpplate img{width:172px;height:auto}
 .cmplogin{width:176px;height:auto}
+
+/* ===== filtros legibles en modo oscuro: texto con el color de la tarjeta, no el negro del navegador ===== */
+select.chip,input.chip,.fg select,.fg input{color:var(--ink)}
+input.chip::placeholder,.fg input::placeholder{color:var(--ink2);opacity:1}
+select.chip option,.fg select option{background:var(--panel);color:var(--ink)}

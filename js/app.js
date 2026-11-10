@@ -52,17 +52,17 @@ const vacio = x => x == null || x === '';
 const cmpVal = (a, b) => typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'es', {numeric: true});
 const valoresDe = k => [...new Set(D.map(m => m[k]).filter(x => !vacio(x)))].sort(cmpVal);
 const etiquetaCol = (k, v) => typeof v === 'number' ? fmt(v, k === 'cosFi' ? 2 : 1) : v;
-const coincideCol = (m, k, v) => TIPO_COL[k] === 'txt' ? norm(m[k]).includes(norm(v).trim()) : v === VACIO ? vacio(m[k]) : String(m[k]) === v;
+const coincideTexto = (x, v) => { const t = norm(v).trim(); return norm(x).includes(t) || (!!A.compacto(t) && A.compacto(x).includes(A.compacto(t))); };
+const coincideCol = (m, k, v) => TIPO_COL[k] === 'txt' ? coincideTexto(m[k], v) : v === VACIO ? vacio(m[k]) : String(m[k]) === v;
 const colsActivas = () => Object.values(state.cols).filter(Boolean).length;
 
 /* ---------- filtros ---------- */
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-const index = m => { m._s = norm([m.numero, m.tag, m.descripcion, m.area, m.frame, m.observaciones, m.rodLibre, m.rodCarga].join(' ')); };
+const index = m => { const x = A.indiceBusqueda(m); m._s = x.s; m._c = x.c; };   // el buscador mira todas las columnas
 D.forEach(index);
 const voltBand = m => m.volt == null ? 'S/D' : m.volt >= 3000 ? 'Media tensión (4 kV)' : m.volt >= 600 ? 'Otro' : 'Baja tensión';
 const problemaCal = () => state.cal ? A.calidad(D).find(p => p.k === state.cal) : null;
 function filtered() {
-  const q = norm(state.q).trim().split(/\s+/).filter(Boolean);
   const pc = problemaCal(), ids = pc ? new Set(pc.ids) : null;
   return D.filter(m =>
     (!state.estado.size || state.estado.has(m.estado)) &&
@@ -71,7 +71,7 @@ function filtered() {
     (!state.kwMin || (m.kw ?? 0) >= +state.kwMin) &&
     (!ids || ids.has(m.id)) &&
     Object.entries(state.cols).every(([k, v]) => !v || coincideCol(m, k, v)) &&
-    q.every(t => m._s.includes(t)));
+    A.coincideBusqueda(m, state.q));
 }
 
 /* ---------- utilidades de gráficos ---------- */

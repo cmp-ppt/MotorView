@@ -99,7 +99,45 @@
     return Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) { return b.fuera - a.fuera || b.total - a.total; });
   }
 
-  var API = { numerosRepetidos: numerosRepetidos, calidad: calidad, polos: polos, cobertura: cobertura, criticosPorArea: criticosPorArea };
+  /* ───────────────────────────── búsqueda ───────────────────────────── */
+
+  var sinAcentos = function (s) { return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); };
+  /** Solo letras y números: "200 L", "200L" y "200-L" quedan iguales; "FS-21255-1M1" y "FS212551M1" también. */
+  var compacto = function (s) { return sinAcentos(s).replace(/[^a-z0-9]/g, ''); };
+
+  var CAMPOS_TEXTO = ['numero', 'estado', 'criticidad', 'area', 'faena', 'montaje', 'frame', 'rodLibre', 'rodCarga', 'tag', 'descripcion', 'observaciones', 'voltTxt'];
+  var CAMPOS_NUMERO = ['kw', 'hp', 'amp', 'volt', 'rpm', 'cosFi'];
+
+  /**
+   * Texto en el que se busca: todas las columnas de la planilla.
+   * `s`: texto normal (sin acentos ni mayúsculas); los números van con punto y con coma, para que "7,5" y "7.5" sirvan.
+   * `c`: versión compacta de las columnas de texto, cada una por separado (para que dos columnas no se junten por error).
+   */
+  function indiceBusqueda(m) {
+    var texto = CAMPOS_TEXTO.map(function (k) { return m[k]; }).filter(function (v) { return v != null && v !== ''; });
+    var numeros = [];
+    CAMPOS_NUMERO.forEach(function (k) {
+      var v = m[k];
+      if (v != null && v !== '') { numeros.push(String(v)); numeros.push(String(v).replace('.', ',')); }
+    });
+    return { s: sinAcentos(texto.concat(numeros).join(' ')), c: texto.map(compacto).filter(Boolean).join('|') };
+  }
+
+  /** ¿El motor coincide con lo escrito? Todas las palabras presentes, o lo escrito completo sin espacios ni signos. */
+  function coincideBusqueda(m, q) {
+    var t = sinAcentos(q).trim();
+    if (!t) return true;
+    var idx = m._s !== undefined ? { s: m._s, c: m._c || '' } : indiceBusqueda(m);
+    var palabras = t.split(/\s+/);
+    // Varias palabras en cualquier orden ("tambor finisher"), pero no con letras sueltas: "200 L" es un frame, no "200" y "L" por separado.
+    var usaPalabras = palabras.length === 1 || palabras.every(function (p) { return p.length >= 2; });
+    if (usaPalabras && palabras.every(function (p) { return idx.s.indexOf(p) !== -1; })) return true;
+    var qc = compacto(t);
+    return qc.length > 0 && idx.c.indexOf(qc) !== -1;
+  }
+
+  var API = { numerosRepetidos: numerosRepetidos, calidad: calidad, polos: polos, cobertura: cobertura, criticosPorArea: criticosPorArea,
+               indiceBusqueda: indiceBusqueda, coincideBusqueda: coincideBusqueda, compacto: compacto };
   global.ANALISIS = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

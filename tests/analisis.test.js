@@ -73,3 +73,47 @@ test('criticosPorArea cuenta los motores A y cuántos están fuera de servicio',
   const r = A.criticosPorArea(D);
   assert.deepEqual(r.map(x => [x.area, x.total, x.servicio, x.fuera]), [['Flotación', 2, 1, 1], ['Rougher', 1, 1, 0]]);
 });
+
+/* ---------- búsqueda ---------- */
+const busca = (m, q) => A.coincideBusqueda(Object.assign({}, m, (() => { const x = A.indiceBusqueda(m); return { _s: x.s, _c: x.c }; })()), q);
+
+test('buscar 200L encuentra el frame escrito "200 L" y "200L"', () => {
+  const con = motor({ frame: '200 L' }), pegado = motor({ frame: '200L' }), otro = motor({ frame: '180 L' });
+  ['200L', '200l', '200 L', '200 l', '200-L'].forEach(q => {
+    assert.equal(busca(con, q), true, q + ' sobre "200 L"');
+    assert.equal(busca(pegado, q), true, q + ' sobre "200L"');
+  });
+  assert.equal(busca(otro, '200L'), false);
+});
+
+test('la búsqueda compacta no junta columnas distintas', () => {
+  const m = motor({ numero: 20, frame: '0L', tag: null, descripcion: null });
+  assert.equal(busca(m, '200l'), false);
+});
+
+test('busca en todas las columnas, también en las numéricas', () => {
+  const m = motor({ kw: 7.5, hp: 10, amp: 15.5, volt: 380, voltTxt: '380', rpm: 1430, cosFi: 0.86, montaje: 'vertical', criticidad: 'A', estado: 'Taller', rodLibre: '6208-ZZ' });
+  ['380', '7,5', '7.5', '15,5', '1430', '0,86', 'vertical', 'taller', 'a', '6208zz', '6208-zz'].forEach(q => assert.equal(busca(m, q), true, q));
+  assert.equal(busca(m, '75'), false);                      // 7,5 kW no es 75
+  assert.equal(busca(m, 'bomba'), false);
+});
+
+test('ignora acentos y mayúsculas, y encuentra el TAG sin guiones', () => {
+  const m = motor({ area: 'Flotación', tag: 'FS-21255-1M1', descripcion: 'Tambor Finisher' });
+  assert.equal(busca(m, 'FLOTACION'), true);
+  assert.equal(busca(m, 'fs21255'), true);
+  assert.equal(busca(m, 'tambor finisher'), true);
+  assert.equal(busca(m, 'finisher tambor'), true);          // palabras en cualquier orden
+  assert.equal(busca(m, ''), true);
+});
+
+test('compacto deja solo letras y números', () => {
+  assert.equal(A.compacto(' 200 L/4 '), '200l4');
+  assert.equal(A.compacto('Flotación'), 'flotacion');
+});
+
+test('"200 L" no se confunde con un motor de 200 kW que tiene una L en otro campo', () => {
+  const falso = motor({ kw: 200, frame: '180 S', descripcion: 'Molino' });
+  assert.equal(busca(falso, '200 L'), false);
+  assert.equal(busca(falso, '200'), true);                  // sola, la potencia sí coincide
+});
