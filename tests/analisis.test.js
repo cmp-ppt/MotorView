@@ -117,3 +117,25 @@ test('"200 L" no se confunde con un motor de 200 kW que tiene una L en otro camp
   assert.equal(busca(falso, '200 L'), false);
   assert.equal(busca(falso, '200'), true);                  // sola, la potencia sí coincide
 });
+
+/* ---------- control de cambios ---------- */
+test('unirCambios junta historial y reparaciones, del más nuevo al más antiguo', () => {
+  const historial = [
+    { id: 1, motor_id: 5, fecha: '2026-11-04T20:14:35.364+00:00', usuario: 'a@cmp.cl', campo: 'estado', anterior: 'En servicio', nuevo: 'Taller', comentario: 'falla' },
+    { id: 2, motor_id: 5, fecha: '2026-11-04T20:14:35.364+00:00', usuario: 'a@cmp.cl', campo: 'criticidad', anterior: null, nuevo: 'A', comentario: null },
+  ];
+  const reparaciones = [{ id: 7, motor_id: 5, tipo: 'Rebobinado', taller: 'Norte', descripcion: 'x', resultado: 'ok', fecha: '2026-11-03', registrado_por: 'b@cmp.cl', registrado_en: '2026-11-05T10:00:00+00:00' }];
+  const r = A.unirCambios(historial, reparaciones);
+  assert.equal(r.length, 3);
+  assert.equal(r[0].tipo, 'reparacion');                     // el más nuevo primero
+  assert.equal(r[0].usuario, 'b@cmp.cl');
+  assert.equal(r[0].subtipo, 'Rebobinado');
+  assert.deepEqual(r.slice(1).map(x => x.tipo).sort(), ['criticidad', 'estado']);
+  assert.equal(r.find(x => x.tipo === 'estado').motivo, 'falla');
+  assert.equal(r.find(x => x.tipo === 'criticidad').motivo, '');
+});
+
+test('unirCambios acepta listas vacías', () => {
+  assert.deepEqual(A.unirCambios([], []), []);
+  assert.deepEqual(A.unirCambios(null, undefined), []);
+});

@@ -14,10 +14,14 @@ los usuarios y el login en **Supabase**.
 - **Disponibilidad:** repuestos, reservados, en transporte y en taller, y **cobertura de repuestos**: por tipo de motor
   (potencia, voltaje y polos) cuántos hay en servicio y cuántos de repuesto, y cuáles quedan sin respaldo.
   Al abrir un motor se sugieren repuestos compatibles.
+- **Control de cambios:** registro de auditoría con todo lo que se modificó, quién y cuándo: estados, ubicaciones, criticidad, observaciones,
+  reparaciones e ingresos de motores. Se filtra por acción y usuario, se busca por motor o detalle, se exporta a CSV y cada fila abre la ficha.
 - **Calidad de datos:** qué falta o está mal en la planilla (sin área, sin TAG, N° repetido, datos de placa o cos φ faltantes,
   sin criticidad). Cada problema abre la lista de motores afectados.
 - **Reparaciones y rebobinados:** historial por motor (tipo, fecha, taller, trabajo, pruebas y garantía), solo se agrega.
 - **Criticidad A, B o C** por motor, con un indicador de críticos por área.
+- **Ingreso de motores nuevos** desde Inventario (botón "+ Nuevo motor", para `admin` y `mantenimiento`): formulario con las mismas columnas de la planilla,
+  validación de números y de N° repetido en la faena, y registro automático en el control de cambios.
 - **Edición con historial:** cada cambio de estado, ubicación, criticidad u observaciones queda con quién, cuándo, valor anterior y motivo.
   La fecha y el usuario los pone la base de datos, no el navegador.
 - Estados: En servicio, Taller, Repuesto, Reservado, En transporte, De baja.
@@ -41,7 +45,7 @@ los usuarios y el login en **Supabase**.
 | Rol | Puede |
 |---|---|
 | `admin` | Ver todo y editar |
-| `mantenimiento` | Ver y editar estado, ubicación, criticidad y observaciones; registrar reparaciones |
+| `mantenimiento` | Ver y editar estado, ubicación, criticidad y observaciones; registrar reparaciones; ingresar motores nuevos |
 | `consulta` | Solo ver |
 
 Una cuenta de Supabase **sin perfil activo no ve ningún motor**. Para quitar acceso: `update public.motorview_perfiles set activo = false where …`.
@@ -76,6 +80,8 @@ El listado trae datos faltantes o inconsistentes (38 motores quedan "Sin clasifi
 ## Seguridad
 - La clave publicable viaja en el navegador: es pública por diseño. Lo que protege los datos son las políticas RLS:
   sin login no hay lectura ni escritura, y sin perfil activo tampoco.
+- Los motores nuevos se ingresan con permiso por columna (el id, quién y cuándo los pone la base, y no se puede escribir la hoja de vida), con reglas de validez
+  (números positivos, cos φ entre 0,5 y 1, estados y criticidad válidos). No hay borrado de motores desde la aplicación.
 - La edición está limitada por columna en la base (solo `estado`, `area`, `observaciones`, `criticidad`, `motivo`). Las reparaciones solo se agregan
   (quién y cuándo lo registró lo pone la base); no hay insert ni delete de motores desde la app.
 - No hay registro desde la aplicación: las cuentas las crea el administrador en Supabase.
