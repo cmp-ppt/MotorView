@@ -212,6 +212,7 @@ function renderInventario() {
     <button class="chip ${n ? 'on' : ''}" id="fMas">Filtros por columna${n ? ' (' + n + ')' : ''} ▾</button>
     <button class="clear" id="clr">Limpiar</button><span class="count" id="cnt"></span>
     <button class="btn sec" id="csv">Exportar CSV</button>
+    ${canEdit() ? '<button class="btn acc" id="nuevoMotor">+ Nuevo motor</button>' : ''}
   </div>
   <div class="tools cols" id="colsPanel" ${state.masOpen ? '' : 'hidden'}>${GRUPOS.filter(g => g.c.some(c => c[2])).map(g => `<fieldset class="fg"><legend>${g.t}</legend>${g.c.filter(c => c[2]).map(c => filtroCol(g, c)).join('')}</fieldset>`).join('')}</div>
   <div class="card tablewrap"><table><thead><tr>${fila1}</tr>${fila2 ? `<tr>${fila2}</tr>` : ''}</thead><tbody id="tb"></tbody></table><div id="mr"></div></div>`;
@@ -226,6 +227,7 @@ function renderInventario() {
   $('#fArea').onchange = e => { state.area = e.target.value; state.limit = 80; renderInventario(); };
   $('#clr').onclick = () => { Object.assign(state, {q:'', estado:new Set(), area:'', volt:'', kwMin:'', cal:'', cols:{}}); $('#gsearch').value = ''; renderInventario(); };
   $('#csv').onclick = exportCSV;
+  const bn = $('#nuevoMotor'); if (bn) bn.onclick = abrirNuevoMotor;
   $$('th[data-k]', v).forEach(th => th.onclick = () => { const k = th.dataset.k; state.dir = state.sort === k ? -state.dir : 1; state.sort = k; renderInventario(); });
   fillRows();
 }
@@ -286,6 +288,80 @@ function renderDisp() {
   $$('[data-cov]', root).forEach(e => e.onclick = () => { const x = cov[+e.dataset.cov]; go('inventario', {cols: {kw: String(x.kw), ...(x.voltTxt ? {voltTxt: x.voltTxt} : {})}}); });
 }
 
+/* ---------- vista Control de cambios: todo lo que se modificó, quién y cuándo ---------- */
+const ACCION = {
+  estado: ['Cambió estado', '#2f7fd0'], area: ['Cambió ubicación', '#0d9488'], observaciones: ['Editó observaciones', '#7b8696'],
+  criticidad: ['Asignó criticidad', '#d23c3c'], reparacion: ['Registró reparación', '#8a5cf0'], alta: ['Ingresó motor', '#16a34a']};
+const nombreDe = email => { const l = String(email || '').split('@')[0]; return l ? l.charAt(0).toUpperCase() + l.slice(1) : '—'; };
+const recorte = (v, n = 70) => vacio(v) ? '—' : String(v).length > n ? String(v).slice(0, n) + '…' : String(v);
+const fechaHora = f => { const d = new Date(f); return isNaN(d) ? '—' : d.toLocaleString('es-CL', {dateStyle: 'short', timeStyle: 'short'}); };
+const motorDe = id => D.find(m => m.id === id);
+let cambiosCache = null;
+const cam = {tipo: '', usuario: '', q: '', limit: 100};
+const detalleCambio = c => c.tipo === 'alta' ? `<b>Motor nuevo</b><small>${esc(c.despues || '')}</small>` : c.tipo === 'reparacion'
+  ? `<b>${esc(c.subtipo)}</b>${c.taller ? ' · ' + esc(c.taller) : ''}${c.descripcion ? `<small>${esc(recorte(c.descripcion, 120))}</small>` : ''}${c.resultado ? `<small><i>${esc(recorte(c.resultado, 120))}</i></small>` : ''}`
+  : `${esc(recorte(c.antes))} → <b>${esc(recorte(c.despues))}</b>${c.motivo ? `<small>“${esc(c.motivo)}”</small>` : ''}`;
+const detalleTexto = c => c.tipo === 'alta' ? `Motor nuevo: ${c.despues ?? ''}` : c.tipo === 'reparacion'
+  ? [c.subtipo, c.taller, c.descripcion, c.resultado].filter(Boolean).join(' · ')
+  : `${c.antes ?? '—'} → ${c.despues ?? '—'}`;
+function cambiosFiltrados() {
+  return (cambiosCache || []).filter(c => {
+    if (cam.tipo && c.tipo !== cam.tipo) return false;
+    if (cam.usuario && c.usuario !== cam.usuario) return false;
+    if (cam.q) {
+      const m = motorDe(c.motorId) || {};
+      const o = {numero: m.numero, tag: m.tag, descripcion: m.descripcion, area: m.area,
+                 observaciones: [c.usuario, c.antes, c.despues, c.motivo, c.subtipo, c.taller, c.descripcion, c.resultado].join(' ')};
+      if (!A.coincideBusqueda(o, cam.q)) return false;
+    }
+    return true;
+  });
+}
+function llenarCambios() {
+  const todos = cambiosCache || [], lista = cambiosFiltrados();
+  $('#camCnt').textContent = lista.length === todos.length ? `${todos.length} movimiento${todos.length === 1 ? '' : 's'} registrado${todos.length === 1 ? '' : 's'}` : `${lista.length} de ${todos.length} movimientos`;
+  $('#camTb').innerHTML = lista.length ? lista.slice(0, cam.limit).map(c => {
+    const m = motorDe(c.motorId), a = ACCION[c.tipo] || [c.tipo, '#7b8696'];
+    return `<tr data-id="${c.motorId}"><td class="mono">${fechaHora(c.fecha)}</td><td><b>${esc(nombreDe(c.usuario))}</b><small>${esc(c.usuario || '')}</small></td>
+      <td><span class="tagacc" style="--c:${a[1]}">${esc(a[0])}</span></td>
+      <td>${m ? `<b>N° ${m.numero ?? '—'}</b><small>${esc(m.tag || m.descripcion || m.area)}</small>` : `<span class="muted">Motor ${c.motorId}</span>`}</td><td>${detalleCambio(c)}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="empty">${todos.length ? 'Sin resultados con estos filtros' : 'Aún no hay cambios registrados. Aparecerán aquí cuando Mantenimiento modifique un motor o registre una reparación.'}</td></tr>`;
+  $$('#camTb tr[data-id]').forEach(r => r.onclick = () => openDrawer(+r.dataset.id));
+  $('#camMas').innerHTML = lista.length > cam.limit ? `<button class="btn sec more" id="camMasBtn">Mostrar más (${lista.length - cam.limit} restantes)</button>` : '';
+  const b = $('#camMasBtn'); if (b) b.onclick = () => { cam.limit += 100; llenarCambios(); };
+}
+function exportarCambios() {
+  const filas = cambiosFiltrados().map(c => { const m = motorDe(c.motorId) || {};
+    return [fechaHora(c.fecha), c.usuario, (ACCION[c.tipo] || [c.tipo])[0], m.numero, m.tag, detalleTexto(c), c.motivo]; });
+  const csv = [['fecha', 'usuario', 'accion', 'n_motor', 'tag', 'detalle', 'motivo'].join(';'), ...filas.map(f => f.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))].join('\n');
+  Object.assign(document.createElement('a'), {href: URL.createObjectURL(new Blob(['﻿' + csv], {type: 'text/csv'})), download: 'control_de_cambios_motorview.csv'}).click();
+}
+async function renderCambios() {
+  const root = $('#v-cambios');
+  if (!cambiosCache) {
+    root.innerHTML = '<div class="card"><p class="note" style="margin:0">Cargando el registro de cambios…</p></div>';
+    try { const r = await window.MV.cambios(); cambiosCache = A.unirCambios(r.historial, r.reparaciones); }
+    catch (err) { if (state.view === 'cambios') root.innerHTML = `<div class="card"><p class="note bad" style="margin:0">${esc(err.message)}</p></div>`; return; }
+    if (state.view !== 'cambios') return;
+  }
+  const porTipo = count(cambiosCache, c => c.tipo), usuarios = [...new Set(cambiosCache.map(c => c.usuario).filter(Boolean))].sort();
+  root.innerHTML = `
+  <div class="card camhead"><div><h3>Registro de auditoría</h3><div class="sub" style="margin:0">Registro de auditoría: quién cambió qué y cuándo. Cada fila abre la ficha del motor.</div></div>
+    <div class="camact"><button class="btn sec" id="camAct">Actualizar</button><button class="btn sec" id="camCsv">Exportar CSV</button></div></div>
+  <div class="tools">
+    ${Object.entries(ACCION).filter(([k]) => porTipo[k]).map(([k, a]) => `<button class="chip ${cam.tipo === k ? 'on' : ''}" data-ctipo="${k}"><i style="background:${a[1]}"></i>${a[0]} (${porTipo[k]})</button>`).join('')}
+    <select class="chip ${cam.usuario ? 'on' : ''}" id="camUsr"><option value="">Todos los usuarios</option>${usuarios.map(u => `<option value="${esc(u)}" ${u === cam.usuario ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>
+    <input class="chip ${cam.q ? 'on' : ''}" id="camQ" placeholder="Buscar motor, TAG o detalle…" value="${esc(cam.q)}" style="width:230px">
+    <span class="count" id="camCnt"></span></div>
+  <div class="card tablewrap"><table class="cam"><thead><tr><th>Fecha / hora</th><th>Usuario</th><th>Acción</th><th>Motor</th><th>Detalle</th></tr></thead><tbody id="camTb"></tbody></table><div id="camMas"></div></div>`;
+  $$('[data-ctipo]', root).forEach(b => b.onclick = () => { cam.tipo = cam.tipo === b.dataset.ctipo ? '' : b.dataset.ctipo; cam.limit = 100; renderCambios(); });
+  $('#camUsr').onchange = e => { cam.usuario = e.target.value; cam.limit = 100; renderCambios(); };
+  $('#camQ').oninput = e => { cam.q = e.target.value; cam.limit = 100; e.target.classList.toggle('on', !!cam.q); llenarCambios(); };
+  $('#camAct').onclick = () => { cambiosCache = null; renderCambios(); };
+  $('#camCsv').onclick = exportarCambios;
+  llenarCambios();
+}
+
 /* ---------- ficha de motor ---------- */
 const dr = $('#drawer'), scrim = $('#scrim');
 function compat(m) {
@@ -334,10 +410,11 @@ function openDrawer(id) {
     if (f.crit.value !== (m.criticidad || '')) cambios.criticidad = f.crit.value;      // solo si cambió
     try {
       Object.assign(m, await window.MV.guardar(m.id, cambios));
+      cambiosCache = null;
       index(m); refresh(); openDrawer(m.id);
     } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
   };
-  const CAMPO = {estado: 'Estado', area: 'Ubicación', observaciones: 'Observaciones', criticidad: 'Criticidad'};
+  const CAMPO = {estado: 'Estado', area: 'Ubicación', observaciones: 'Observaciones', criticidad: 'Criticidad', alta: 'Alta del motor'};
   window.MV.historial(m.id).then(h => {
     const el = $('#hist'); if (!el || dr.dataset.id != m.id) return;
     el.innerHTML = h.length ? h.map(x => `<div class="hi"><b>${CAMPO[x.campo] || x.campo}</b>: ${esc(x.anterior ?? '—')} → <b>${esc(x.nuevo ?? '—')}</b><small>${esc(x.usuario)} · ${new Date(x.fecha).toLocaleString('es-CL')}${x.comentario ? ' · “' + esc(x.comentario) + '”' : ''}</small></div>`).join('') : '<p class="note" style="margin:0">Sin cambios registrados desde la importación del Excel.</p>';
@@ -357,19 +434,78 @@ function openDrawer(id) {
       const f = rf.elements;
       try {
         await window.MV.registrarReparacion(m.id, {tipo: f.tipo.value, fecha: f.fecha.value, taller: f.taller.value, descripcion: f.desc.value, resultado: f.res.value});
+        cambiosCache = null;
         rf.reset(); rf.hidden = true; msg.textContent = ''; await cargarRep();
       } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
     };
   }
   $('#dx').onclick = closeDrawer; dr.classList.add('on'); scrim.classList.add('on'); dr.scrollTop = 0;
 }
-const VISTAS = {resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp, calidad: renderCalidad};
+/* ---------- ingreso de un motor nuevo (admin y mantenimiento) ---------- */
+function abrirNuevoMotor() {
+  if (!canEdit()) return;
+  const areas = [...new Set(D.map(x => x.area))].sort();
+  dr.dataset.id = '';
+  dr.innerHTML = `
+  <div class="dh"><button class="x" id="dx">✕</button><small>Nuevo registro</small><h2>Nuevo motor</h2><p>Se agrega al inventario y queda en el control de cambios.</p></div>
+  <form class="sec eform nuevo" id="nf" autocomplete="off">
+    <h4>Identificación</h4>
+    <div class="fgrid">
+      <label>N° de motor<input name="numero" inputmode="numeric" placeholder="Ej: 458"></label>
+      <label>Faena<select name="faena">${[...new Set([...FAENAS, ...D.map(x => x.faena)])].map(f => `<option ${f === 'Planta Magnetita' ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
+    </div>
+    <label>Ubicación (área)<input name="area" list="areasN" maxlength="60" required placeholder="Ej: Flotación"></label>
+    <datalist id="areasN">${areas.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+    <div class="fgrid">
+      <label>Estado<select name="estado">${ESTADOS.map(e => `<option>${e.k}</option>`).join('')}</select></label>
+      <label>Criticidad<select name="crit"><option value="">Sin asignar</option>${Object.entries(CRIT).map(([k, c]) => `<option value="${k}">${k} · ${c.t}</option>`).join('')}</select></label>
+    </div>
+    <label>TAG<input name="tag" maxlength="100"></label>
+    <label>Descripción<input name="descripcion" maxlength="300" placeholder="Ej: Bomba de agua de sello"></label>
+    <h4>Datos de placa</h4>
+    <div class="fgrid">
+      <label>Potencia HP<input name="hp" inputmode="decimal"></label>
+      <label>Potencia kW<input name="kw" inputmode="decimal"></label>
+      <label>Corriente (A)<input name="amp" inputmode="decimal"></label>
+      <label>Voltaje (V)<input name="volt" placeholder="380 o 380/660"></label>
+      <label>Velocidad (rpm)<input name="rpm" inputmode="numeric"></label>
+      <label>cos φ teórico<input name="cosfi" inputmode="decimal" placeholder="Ej: 0,86"></label>
+      <label>Montaje<select name="montaje"><option value="">—</option><option>horizontal</option><option>vertical</option></select></label>
+      <label>Frame<input name="frame" maxlength="50"></label>
+      <label>Rodamiento lado libre<input name="rodlibre" maxlength="100"></label>
+      <label>Rodamiento lado carga<input name="rodcarga" maxlength="100"></label>
+    </div>
+    <p class="note">Si indicas solo HP o solo kW, el otro se calcula. Lo que no tengas ahora se puede completar después: el panel de Calidad de datos muestra lo que falte.</p>
+    <label>Observaciones<textarea name="obs" rows="2" maxlength="500"></textarea></label>
+    <div class="erow"><button class="btn" type="submit">Guardar motor</button><button class="btn sec" type="button" id="ncancel">Cancelar</button><span id="nmsg"></span></div>
+  </form>`;
+  const nf = $('#nf', dr);
+  nf.onsubmit = async e => {
+    e.preventDefault(); const msg = $('#nmsg'); msg.className = ''; msg.textContent = 'Guardando…';
+    const f = nf.elements;
+    const datos = {numero: f.numero.value, faena: f.faena.value, area: f.area.value, estado: f.estado.value, criticidad: f.crit.value, tag: f.tag.value,
+      descripcion: f.descripcion.value, observaciones: f.obs.value, hp: f.hp.value, kw: f.kw.value, amp: f.amp.value, volt: f.volt.value, rpm: f.rpm.value,
+      montaje: f.montaje.value, frame: f.frame.value, rodLibre: f.rodlibre.value, rodCarga: f.rodcarga.value, cosFi: f.cosfi.value};
+    const v = window.MV.validarMotor(datos);
+    if (v.errores.length) { msg.className = 'bad'; msg.textContent = v.errores[0]; return; }
+    const dup = v.cuerpo.numero != null && D.find(x => x.numero === v.cuerpo.numero && x.faena === v.cuerpo.faena);
+    if (dup) { msg.className = 'bad'; msg.textContent = `Ya existe el motor N° ${dup.numero} en ${dup.faena} (${dup.tag || dup.descripcion || dup.area}). Usa otro número o déjalo vacío.`; return; }
+    try {
+      const m = await window.MV.crearMotor(datos);
+      D.push(m); index(m); cambiosCache = null; refresh(); openDrawer(m.id);
+    } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
+  };
+  $('#ncancel', dr).onclick = closeDrawer; $('#dx', dr).onclick = closeDrawer;
+  dr.classList.add('on'); scrim.classList.add('on'); dr.scrollTop = 0; nf.elements.numero.focus();
+}
+
+const VISTAS = {resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp, calidad: renderCalidad, cambios: renderCambios};
 const refresh = () => VISTAS[state.view]();
 function closeDrawer() { dr.classList.remove('on'); scrim.classList.remove('on'); }
 scrim.onclick = closeDrawer;
 
 /* ---------- navegación ---------- */
-const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Cobertura de repuestos, reservados, en transporte y en reparación'], calidad: ['Calidad de datos', 'Qué falta o está mal en la planilla, para corregirlo con Mantenimiento']};
+const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Cobertura de repuestos, reservados, en transporte y en reparación'], calidad: ['Calidad de datos', 'Qué falta o está mal en la planilla, para corregirlo con Mantenimiento'], cambios: ['Control de cambios', 'Quién modificó qué y cuándo: estados, ubicaciones, criticidad y reparaciones']};
 function go(view, filters) {
   if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', kwMin: '', cal: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
   state.view = view;

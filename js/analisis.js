@@ -136,8 +136,29 @@
     return qc.length > 0 && idx.c.indexOf(qc) !== -1;
   }
 
+  /* ─────────────────────────── control de cambios ─────────────────────────── */
+
+  /**
+   * Une el historial de cambios y las reparaciones en una sola lista, del más nuevo al más antiguo.
+   * tipo: estado | area | observaciones | criticidad | reparacion
+   */
+  function unirCambios(historial, reparaciones) {
+    var a = (historial || []).map(function (x) {
+      return { clave: 'h' + x.id, fecha: x.fecha, usuario: x.usuario, tipo: x.campo, motorId: x.motor_id,
+               antes: x.anterior, despues: x.nuevo, motivo: x.comentario || '' };
+    });
+    var b = (reparaciones || []).map(function (x) {
+      return { clave: 'r' + x.id, fecha: x.registrado_en || x.fecha, usuario: x.registrado_por, tipo: 'reparacion', motorId: x.motor_id,
+               subtipo: x.tipo, taller: x.taller, descripcion: x.descripcion, resultado: x.resultado, fechaTrabajo: x.fecha, motivo: '' };
+    });
+    return a.concat(b).sort(function (p, q) {
+      var d = new Date(q.fecha) - new Date(p.fecha);
+      return d || (p.clave < q.clave ? 1 : -1);
+    });
+  }
+
   var API = { numerosRepetidos: numerosRepetidos, calidad: calidad, polos: polos, cobertura: cobertura, criticosPorArea: criticosPorArea,
-               indiceBusqueda: indiceBusqueda, coincideBusqueda: coincideBusqueda, compacto: compacto };
+               indiceBusqueda: indiceBusqueda, coincideBusqueda: coincideBusqueda, compacto: compacto, unirCambios: unirCambios };
   global.ANALISIS = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

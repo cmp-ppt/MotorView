@@ -237,3 +237,17 @@ table.cov{min-width:780px}.cov th.num,.cov td.num{text-align:right}.cov tbody tr
 select.chip,input.chip,.fg select,.fg input{color:var(--ink)}
 input.chip::placeholder,.fg input::placeholder{color:var(--ink2);opacity:1}
 select.chip option,.fg select option{background:var(--panel);color:var(--ink)}
+
+/* ===== control de cambios ===== */
+.camhead{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.camhead h3{margin:0 0 4px}.camact{display:flex;gap:10px}
+table.cam{min-width:820px}.cam td{white-space:normal;vertical-align:top}.cam tbody tr{cursor:pointer}
+.cam td small{display:block;color:var(--ink2);font-size:12px;margin-top:2px}
+.cam td.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:var(--ink2);white-space:nowrap}
+.tagacc{display:inline-block;padding:4px 10px;border-radius:6px;color:#fff;font-size:11.5px;font-weight:700;background:var(--c);white-space:nowrap}
+
+/* ===== ingreso de un motor nuevo ===== */
+.btn.acc{background:var(--accent);color:#fff}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.nuevo h4{margin:8px 0 0}
+.erow .btn.sec{background:var(--panel);color:var(--ink);border:1px solid var(--line)}

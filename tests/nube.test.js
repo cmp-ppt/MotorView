@@ -46,3 +46,47 @@ test('mensaje traduce los errores más comunes', () => {
   assert.match(N.mensaje(400, { code: '23514' }), /no es válido/);
   assert.equal(N.mensaje(500, { message: 'boom' }), 'boom');
 });
+
+/* ---------- motor nuevo ---------- */
+test('aMotorNuevo calcula kW desde HP y HP desde kW, y acepta coma decimal', () => {
+  const a = N.aMotorNuevo({ faena: 'Planta Magnetita', area: 'Rougher', hp: '10' });
+  assert.equal(a.cuerpo.kw, 7.5);
+  const b = N.aMotorNuevo({ faena: 'Planta Magnetita', area: 'Rougher', kw: '7,5' });
+  assert.equal(b.cuerpo.hp, 10);
+  assert.deepEqual(b.errores, []);
+  const c = N.aMotorNuevo({ faena: 'F', area: 'A', hp: '10', kw: '8' });          // si se indican los dos, se respetan
+  assert.deepEqual([c.cuerpo.hp, c.cuerpo.kw], [10, 8]);
+});
+
+test('aMotorNuevo exige faena y ubicación, y vacío se manda como null', () => {
+  const r = N.aMotorNuevo({});
+  assert.equal(r.errores.length, 2);
+  assert.match(r.errores.join(' '), /faena/); assert.match(r.errores.join(' '), /ubicación/);
+  const ok = N.aMotorNuevo({ faena: 'F', area: 'A', tag: '  ', descripcion: ' Bomba   de agua ', numero: '' });
+  assert.equal(ok.cuerpo.tag, null); assert.equal(ok.cuerpo.numero, null);
+  assert.equal(ok.cuerpo.descripcion, 'Bomba de agua');
+  assert.equal(ok.cuerpo.estado, 'En servicio');
+});
+
+test('aMotorNuevo rechaza valores que la base también rechaza', () => {
+  const malo = d => N.aMotorNuevo(Object.assign({ faena: 'F', area: 'A' }, d)).errores.length > 0;
+  assert.equal(malo({ kw: '-5' }), true);
+  assert.equal(malo({ kw: '0' }), true);
+  assert.equal(malo({ kw: 'abc' }), true);
+  assert.equal(malo({ cosFi: '2' }), true);
+  assert.equal(malo({ cosFi: '0,86' }), false);
+  assert.equal(malo({ numero: '4,5' }), true);
+  assert.equal(malo({ numero: '0' }), true);
+  assert.equal(malo({ estado: 'Volando' }), true);
+  assert.equal(malo({ criticidad: 'Z' }), true);
+  assert.equal(malo({ montaje: 'diagonal' }), true);
+  assert.equal(malo({ volt: 'alto' }), true);
+  assert.equal(malo({ tag: 'x'.repeat(101) }), true);
+  assert.equal(malo({ observaciones: 'x'.repeat(501) }), true);
+});
+
+test('aMotorNuevo separa el voltaje en número y texto', () => {
+  const r = N.aMotorNuevo({ faena: 'F', area: 'A', volt: '380/660' });
+  assert.equal(r.cuerpo.volt, 380); assert.equal(r.cuerpo.volt_txt, '380/660');
+  assert.equal(N.aMotorNuevo({ faena: 'F', area: 'A', volt: '4,16' }).cuerpo.volt, 4.16);
+});

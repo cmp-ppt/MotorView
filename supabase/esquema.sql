@@ -70,6 +70,23 @@ alter table public.motorview_motores add column if not exists criticidad text;
 alter table public.motorview_motores drop constraint if exists motorview_motores_criticidad_check;
 alter table public.motorview_motores add constraint motorview_motores_criticidad_check check (criticidad in ('A','B','C'));
 
+-- Los motores que se ingresan desde la aplicación reciben su id de una secuencia
+-- (la carga inicial usa ids explícitos: 1, 2, 3…). Cada vez que se ejecuta este archivo
+-- la secuencia se ubica justo después del mayor id existente.
+create sequence if not exists public.motorview_motores_id_seq;
+select setval('public.motorview_motores_id_seq', coalesce((select max(id) from public.motorview_motores), 0) + 1, false);
+alter table public.motorview_motores alter column id set default nextval('public.motorview_motores_id_seq');
+
+-- Reglas de validez para lo que se ingresa o edita (no revisan de nuevo lo ya cargado).
+alter table public.motorview_motores drop constraint if exists motorview_motores_valores_check;
+alter table public.motorview_motores add constraint motorview_motores_valores_check check (
+      (numero is null or numero > 0) and (hp is null or hp > 0) and (kw is null or kw > 0)
+  and (amp is null or amp > 0) and (volt is null or volt > 0) and (rpm is null or rpm > 0)
+  and (cos_fi is null or cos_fi between 0.5 and 1)
+  and char_length(coalesce(tag, '')) <= 100 and char_length(coalesce(descripcion, '')) <= 300
+  and char_length(coalesce(frame, '')) <= 50 and char_length(coalesce(rod_libre, '')) <= 100 and char_length(coalesce(rod_carga, '')) <= 100
+) not valid;
+
 -- ------------------------------------------------------------
 -- HISTORIAL: una fila por campo cambiado. Solo lo escribe el disparador.
 -- ------------------------------------------------------------
@@ -128,6 +145,41 @@ create trigger motorview_motores_cambios
   before update on public.motorview_motores
   for each row execute function public.motorview_motores_cambios();
 
+-- ALTA DE UN MOTOR desde la aplicación: el servidor pone quién y cuándo, y deja el registro en el
+-- historial (control de cambios). La carga inicial hecha desde el SQL Editor no genera estos registros.
+create or replace function public.motorview_motores_alta()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare quien text := auth.jwt() ->> 'email';
+begin
+  if quien is not null then
+    new.actualizado_en  := now();
+    new.actualizado_por := quien;
+    new.motivo          := null;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists motorview_motores_alta on public.motorview_motores;
+create trigger motorview_motores_alta
+  before insert on public.motorview_motores
+  for each row execute function public.motorview_motores_alta();
+
+create or replace function public.motorview_motores_alta_historial()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare quien text := auth.jwt() ->> 'email';
+begin
+  if quien is not null then
+    insert into public.motorview_historial (motor_id, usuario, campo, anterior, nuevo)
+    values (new.id, quien, 'alta', null, concat_ws(' · ', 'N° ' || coalesce(new.numero::text, 's/n'), new.faena, new.area));
+  end if;
+  return null;
+end $$;
+
+drop trigger if exists motorview_motores_alta_historial on public.motorview_motores;
+create trigger motorview_motores_alta_historial
+  after insert on public.motorview_motores
+  for each row execute function public.motorview_motores_alta_historial();
+
 -- ------------------------------------------------------------
 -- REPARACIONES Y REBOBINADOS: una fila por intervención en un motor.
 --
@@ -169,7 +221,8 @@ create trigger motorview_reparaciones_sello
 --   · lectura: cualquier usuario con perfil activo (admin, mantenimiento, consulta)
 --   · edición: admin y mantenimiento, y solo estado, área, observaciones, criticidad y motivo
 --   · reparaciones: admin y mantenimiento pueden agregar; nadie edita ni borra desde la aplicación
---   · sin insert ni delete de motores desde la aplicación (la carga inicial se hace desde el SQL Editor)
+--   · ingreso de motores nuevos: admin y mantenimiento (por columna; sin tocar hoja de vida ni sellos del servidor)
+--   · sin delete de motores desde la aplicación; la carga masiva inicial se hace desde el SQL Editor
 --   · `anon` (sin login) no accede a nada
 -- ------------------------------------------------------------
 alter table public.motorview_perfiles  enable row level security;
@@ -181,6 +234,10 @@ revoke all on public.motorview_perfiles, public.motorview_motores, public.motorv
 grant select on public.motorview_perfiles, public.motorview_motores, public.motorview_historial, public.motorview_reparaciones to authenticated;
 grant update (estado, area, observaciones, criticidad, motivo) on public.motorview_motores to authenticated;
 grant insert (motor_id, fecha, tipo, taller, descripcion, resultado) on public.motorview_reparaciones to authenticated;
+revoke all on sequence public.motorview_motores_id_seq from anon, authenticated;
+grant usage on sequence public.motorview_motores_id_seq to authenticated;
+grant insert (numero, faena, area, estado, tag, descripcion, observaciones, hp, kw, amp, volt, volt_txt, rpm, montaje, frame,
+              rod_libre, rod_carga, cos_fi, criticidad) on public.motorview_motores to authenticated;
 
 drop policy if exists motorview_perfiles_ver on public.motorview_perfiles;
 create policy motorview_perfiles_ver on public.motorview_perfiles
@@ -191,6 +248,11 @@ drop policy if exists motorview_motores_ver on public.motorview_motores;
 create policy motorview_motores_ver on public.motorview_motores
   for select to authenticated
   using (public.motorview_rol() is not null);
+
+drop policy if exists motorview_motores_agregar on public.motorview_motores;
+create policy motorview_motores_agregar on public.motorview_motores
+  for insert to authenticated
+  with check (public.motorview_rol() in ('admin','mantenimiento'));
 
 drop policy if exists motorview_motores_editar on public.motorview_motores;
 create policy motorview_motores_editar on public.motorview_motores
