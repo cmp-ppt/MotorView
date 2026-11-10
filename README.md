@@ -9,7 +9,7 @@ los usuarios y el login en **Supabase**.
 
 ## Qué incluye
 - **Resumen:** KPIs, estado de la flota, motores por área, potencia y tensión; cada gráfico filtra el inventario.
-- **Inventario:** búsqueda y filtros por las columnas de la planilla (con la misma cabecera de dos filas), orden,
+- **Inventario:** búsqueda en todas las columnas (ignora acentos, espacios y guiones: "200L", "200 L" y "FS21255" funcionan) y filtros por las columnas de la planilla (con la misma cabecera de dos filas), orden,
   exportación a CSV y ficha técnica por motor.
 - **Disponibilidad:** repuestos, reservados, en transporte y en taller, y **cobertura de repuestos**: por tipo de motor
   (potencia, voltaje y polos) cuántos hay en servicio y cuántos de repuesto, y cuáles quedan sin respaldo.
