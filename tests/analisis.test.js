@@ -139,3 +139,15 @@ test('unirCambios acepta listas vacías', () => {
   assert.deepEqual(A.unirCambios([], []), []);
   assert.deepEqual(A.unirCambios(null, undefined), []);
 });
+
+test('csvCelda neutraliza fórmulas de Excel y deja intactos los números y el texto normal', () => {
+  const { csvCelda } = require('../js/analisis.js');
+  assert.equal(csvCelda('=HYPERLINK("http://x")'), `"'=HYPERLINK(""http://x"")"`);
+  assert.equal(csvCelda('+56 9 1234'), `"'+56 9 1234"`);
+  assert.equal(csvCelda('@SUM(A1)'), `"'@SUM(A1)"`);
+  assert.equal(csvCelda('-cmd'), `"'-cmd"`);
+  assert.equal(csvCelda(-5), '"-5"');
+  assert.equal(csvCelda('-5'), '"-5"');
+  assert.equal(csvCelda(null), '""');
+  assert.equal(csvCelda('Bomba "A"'), '"Bomba ""A"""');
+});
