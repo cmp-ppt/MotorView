@@ -154,7 +154,7 @@ function renderResumen() {
     <div class="card"><h3>Motores críticos por área</h3><div class="sub">Criticidad A · cuántos están fuera de servicio</div>${crit.length
       ? `<div class="crits">${crit.map(x => `<button data-critarea="${esc(x.area)}"><span>${esc(x.area)}</span><b>${x.total}</b><span class="pill" style="--c:${x.fuera ? '#d23c3c' : 'var(--ok)'}">${x.fuera ? x.fuera + ' fuera de servicio' : 'Todos en servicio'}</span></button>`).join('')}</div>`
       : '<p class="note">Aún no hay motores con criticidad A. Asígnala desde la ficha de cada motor.</p>'}</div>
-    <div class="card"><h3>Mayores motores</h3><div class="sub">Top 6 por potencia</div><div class="rep">${kwDesc.map(m => `<button data-id="${m.id}"><div><b style="color:var(--accent)">${fmt(m.kw)} kW</b></div><div>N° ${m.numero}<small>${esc(m.descripcion || m.tag || m.area)} · ${esc(m.area)}</small></div><span class="pill" style="--c:${COL[m.estado]};margin-left:auto">${m.estado}</span></button>`).join('')}</div></div>
+    <div class="card"><h3>Mayores motores</h3><div class="sub">Top 6 por potencia</div><div class="rep">${kwDesc.map(m => `<button data-id="${m.id}"><div><b style="color:var(--accent)">${fmt(m.kw)} kW</b></div><div>N° ${m.numero}<small>${esc(m.descripcion || m.tag || m.area)} · ${esc(m.area)}</small></div><span class="pill" style="--c:${COL[m.estado]};margin-left:auto">${esc(m.estado)}</span></button>`).join('')}</div></div>
   </div>`;
   const root = $('#v-resumen'); bindTip(root);
   $$('.kpi', root).forEach(k => k.onclick = () => { const g = JSON.parse(k.dataset.go); g.view ? go(g.view) : go('inventario', g); });
@@ -174,7 +174,7 @@ const ORDEN = GRUPOS.filter(g => !g.soloFiltro).flatMap(g => g.c.map(c => c[0]))
 const sk = k => k === 'voltTxt' ? 'volt' : k;                 // el voltaje se ordena por su valor numérico
 const CELDA = {
   numero: m => `<td><b>${m.numero ?? '—'}</b></td>`,
-  estado: m => `<td><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span></td>`,
+  estado: m => `<td><span class="pill" style="--c:${COL[m.estado]}">${esc(m.estado)}</span></td>`,
   criticidad: m => `<td>${critPill(m.criticidad)}</td>`,
   area: m => `<td>${esc(m.area)}</td>`,
   hp: m => `<td class="num">${fmt(m.hp, 1)}</td>`,
@@ -243,7 +243,7 @@ function fillRows() {
 }
 function exportCSV() {
   const rows = filtered(), keys = ['numero','faena','area','estado','criticidad','tag','descripcion','kw','hp','volt','amp','rpm','montaje','frame','rodLibre','rodCarga','cosFi','observaciones'];
-  const csv = [keys.join(';'), ...rows.map(m => keys.map(k => `"${String(m[k] ?? '').replace(/"/g, '""')}"`).join(';'))].join('\n');
+  const csv = [keys.join(';'), ...rows.map(m => keys.map(k => A.csvCelda(m[k])).join(';'))].join('\n');
   const a = Object.assign(document.createElement('a'), {href: URL.createObjectURL(new Blob(['﻿' + csv], {type: 'text/csv'})), download: 'motores_cmp.csv'}); a.click();
 }
 
@@ -269,7 +269,7 @@ function renderCalidad() {
 /* ---------- vista Disponibilidad ---------- */
 function renderDisp() {
   const sp = D.filter(m => m.estado === 'Repuesto'), tl = D.filter(m => m.estado === 'Taller'), rs = D.filter(m => m.estado === 'Reservado'), tr = D.filter(m => m.estado === 'En transporte');
-  const card = m => `<div class="card sp" data-id="${m.id}"><div class="kw">${fmt(m.kw, 1)}<small> kW · ${fmt(m.hp, 1)} HP</small></div><div class="m"><b>N° ${m.numero ?? '—'}</b> ${m.tag ? '· ' + esc(m.tag) : ''}<br>${m.volt ? fmt(m.volt) + ' V' : 's/d'} · ${m.rpm ? fmt(m.rpm) + ' rpm' : 's/d'} · <span class="mic">${m.montaje ? iconoMotor(m.montaje) : ''}</span>${m.montaje || 'montaje s/d'}<br>${esc(m.descripcion || '')}${m.observaciones ? '<br><i>' + esc(m.observaciones) + '</i>' : ''}</div></div>`;
+  const card = m => `<div class="card sp" data-id="${m.id}"><div class="kw">${fmt(m.kw, 1)}<small> kW · ${fmt(m.hp, 1)} HP</small></div><div class="m"><b>N° ${m.numero ?? '—'}</b> ${m.tag ? '· ' + esc(m.tag) : ''}<br>${m.volt ? fmt(m.volt) + ' V' : 's/d'} · ${m.rpm ? fmt(m.rpm) + ' rpm' : 's/d'} · <span class="mic">${m.montaje ? iconoMotor(m.montaje) : ''}</span>${esc(m.montaje || 'montaje s/d')}<br>${esc(m.descripcion || '')}${m.observaciones ? '<br><i>' + esc(m.observaciones) + '</i>' : ''}</div></div>`;
   const sec = (t, a) => `<h3 style="margin:28px 0 12px">${t} · ${a.length}</h3>` + (a.length ? `<div class="disp">${a.sort((x, y) => (y.kw || 0) - (x.kw || 0)).map(card).join('')}</div>` : '<p class="note">Ningún motor en este estado.</p>');
   const cov = A.cobertura(D), sin = cov.filter(x => x.sinRespaldo), expuestos = sin.reduce((s, x) => s + x.servicio, 0);
   const tipo = x => `${fmt(x.kw, 1)} kW · ${x.voltTxt ? esc(x.voltTxt) + ' V' : 's/d'} · ${x.polos ? x.polos + ' polos' : 's/d'}`;
@@ -333,7 +333,7 @@ function llenarCambios() {
 function exportarCambios() {
   const filas = cambiosFiltrados().map(c => { const m = motorDe(c.motorId) || {};
     return [fechaHora(c.fecha), c.usuario, (ACCION[c.tipo] || [c.tipo])[0], m.numero, m.tag, detalleTexto(c), c.motivo]; });
-  const csv = [['fecha', 'usuario', 'accion', 'n_motor', 'tag', 'detalle', 'motivo'].join(';'), ...filas.map(f => f.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))].join('\n');
+  const csv = [['fecha', 'usuario', 'accion', 'n_motor', 'tag', 'detalle', 'motivo'].join(';'), ...filas.map(f => f.map(v => A.csvCelda(v)).join(';'))].join('\n');
   Object.assign(document.createElement('a'), {href: URL.createObjectURL(new Blob(['﻿' + csv], {type: 'text/csv'})), download: 'control_de_cambios_motorview.csv'}).click();
 }
 async function renderCambios() {
@@ -375,7 +375,7 @@ function openDrawer(id) {
   const cs = m.estado === 'En servicio' || m.estado === 'Taller' ? compat(m) : [];
   const hoy = new Date().toISOString().slice(0, 10);
   dr.innerHTML = `
-  <div class="dh"><button class="x" id="dx">✕</button><small>${esc(m.faena)}</small><h2>Motor N° ${m.numero ?? '—'}</h2><p>${esc(m.descripcion || m.tag || 'Sin descripción')}</p><span class="pill" style="--c:${COL[m.estado]}">${m.estado}</span> ${m.criticidad ? `<span class="pill" style="--c:${CRIT[m.criticidad].c}">Criticidad ${m.criticidad}</span>` : ''}</div>
+  <div class="dh"><button class="x" id="dx">✕</button><small>${esc(m.faena)}</small><h2>Motor N° ${m.numero ?? '—'}</h2><p>${esc(m.descripcion || m.tag || 'Sin descripción')}</p><span class="pill" style="--c:${COL[m.estado]}">${esc(m.estado)}</span> ${m.criticidad ? `<span class="pill" style="--c:${CRIT[m.criticidad].c}">Criticidad ${m.criticidad}</span>` : ''}</div>
   <div class="big"><div><b>${fmt(m.kw, 1)}</b><span>kW</span></div><div><b>${m.voltTxt ? esc(m.voltTxt) : '—'}</b><span>Voltios</span></div><div><b>${fmt(m.rpm)}</b><span>RPM</span></div></div>
   <div class="sec"><h4>Ubicación y estado</h4><div class="kv">${kv('Ubicación', m.area)}${kv('TAG', m.tag)}${kv('Estado', m.estado)}${kv('Faena', m.faena)}${kv('Criticidad', m.criticidad ? m.criticidad + ' · ' + CRIT[m.criticidad].t : null)}</div>${m.observaciones ? `<p class="note">${esc(m.observaciones)}</p>` : ''}
     ${m.actualizadoPor ? `<p class="upd">Última actualización: ${esc(m.actualizadoPor)} · ${new Date(m.actualizadoEn).toLocaleString('es-CL')}</p>` : ''}</div>
@@ -417,7 +417,7 @@ function openDrawer(id) {
   const CAMPO = {estado: 'Estado', area: 'Ubicación', observaciones: 'Observaciones', criticidad: 'Criticidad', alta: 'Alta del motor'};
   window.MV.historial(m.id).then(h => {
     const el = $('#hist'); if (!el || dr.dataset.id != m.id) return;
-    el.innerHTML = h.length ? h.map(x => `<div class="hi"><b>${CAMPO[x.campo] || x.campo}</b>: ${esc(x.anterior ?? '—')} → <b>${esc(x.nuevo ?? '—')}</b><small>${esc(x.usuario)} · ${new Date(x.fecha).toLocaleString('es-CL')}${x.comentario ? ' · “' + esc(x.comentario) + '”' : ''}</small></div>`).join('') : '<p class="note" style="margin:0">Sin cambios registrados desde la importación del Excel.</p>';
+    el.innerHTML = h.length ? h.map(x => `<div class="hi"><b>${esc(CAMPO[x.campo] || x.campo)}</b>: ${esc(x.anterior ?? '—')} → <b>${esc(x.nuevo ?? '—')}</b><small>${esc(x.usuario)} · ${new Date(x.fecha).toLocaleString('es-CL')}${x.comentario ? ' · “' + esc(x.comentario) + '”' : ''}</small></div>`).join('') : '<p class="note" style="margin:0">Sin cambios registrados desde la importación del Excel.</p>';
   }).catch(() => {});
   const cargarRep = () => window.MV.reparaciones(m.id).then(lista => {
     const el = $('#repList'); if (!el || dr.dataset.id != m.id) return;

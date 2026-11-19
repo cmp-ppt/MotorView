@@ -157,8 +157,16 @@
     });
   }
 
+  /* Celda de CSV segura: Excel ejecuta como fórmula lo que empieza con = + - @ (o tab/retorno);
+     se antepone un apóstrofo para que se lea como texto. Los números se dejan intactos. */
+  function csvCelda(v) {
+    var t = v == null ? '' : String(v);
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t) && isNaN(Number(t))) t = "'" + t;
+    return '"' + t.replace(/"/g, '""') + '"';
+  }
+
   var API = { numerosRepetidos: numerosRepetidos, calidad: calidad, polos: polos, cobertura: cobertura, criticosPorArea: criticosPorArea,
-               indiceBusqueda: indiceBusqueda, coincideBusqueda: coincideBusqueda, compacto: compacto, unirCambios: unirCambios };
+               indiceBusqueda: indiceBusqueda, coincideBusqueda: coincideBusqueda, compacto: compacto, unirCambios: unirCambios, csvCelda: csvCelda };
   global.ANALISIS = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);
