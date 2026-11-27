@@ -10,7 +10,8 @@
 
   var ESTADOS = ['En servicio', 'Taller', 'Repuesto', 'Reservado', 'En transporte', 'De baja'];
 
-  var T = { motores: 'motorview_motores', historial: 'motorview_historial', perfiles: 'motorview_perfiles', reparaciones: 'motorview_reparaciones' };
+  var T = { motores: 'motorview_motores', historial: 'motorview_historial', perfiles: 'motorview_perfiles', reparaciones: 'motorview_reparaciones', solicitudes: 'motorview_solicitudes' };
+  var ACCIONES_SOLICITUD = ['aprobar', 'rechazar', 'entregar', 'cancelar'];
   var TIPOS_REPARACION = ['Rebobinado', 'Cambio de rodamientos', 'Reparación mecánica', 'Mantención', 'Prueba eléctrica', 'Otro'];
 
   /* ─────────────── lo que se puede probar sin red ─────────────── */
@@ -44,6 +45,17 @@
     if ('criticidad' in c) o.criticidad = vacio(c.criticidad);
     o.motivo = vacio(c.comentario);
     return o;
+  }
+
+  /** Formulario de solicitud de un motor de otra faena → cuerpo del POST. Quién, cuándo y la faena de origen los pone el servidor. */
+  function aSolicitud(motorId, d) {
+    var faena = d.faena == null ? '' : String(d.faena).trim();
+    var motivo = d.motivo == null ? '' : String(d.motivo).trim().replace(/\s+/g, ' ');
+    var e = [];
+    if (!faena) e.push('Indica la faena que necesita el motor.');
+    if (motivo.length < 3) e.push('Escribe el motivo de la solicitud (mínimo 3 letras).');
+    if (motivo.length > 300) e.push('El motivo puede tener hasta 300 caracteres.');
+    return { cuerpo: { motor_id: motorId, faena_destino: faena, motivo: motivo }, errores: e };
   }
 
   /** Texto de un formulario → número. Vacío = null; acepta coma o punto decimal; si no es un número = NaN. */
@@ -105,7 +117,8 @@
     var m = json && (json.message || json.msg || json.error_description) || '';
     if (estado === 401) return 'Tu sesión expiró. Vuelve a ingresar.';
     if (estado === 403 || (json && json.code === '42501')) return 'Tu rol no permite este cambio.';
-    if (json && /^(PGRST204|PGRST205|42703|42P01)$/.test(json.code)) return 'La base de datos no tiene la última versión. Ejecuta supabase/esquema.sql de nuevo en Supabase.';
+    if (json && /^(PGRST202|PGRST204|PGRST205|42703|42P01|42883)$/.test(json.code)) return 'La base de datos no tiene la última versión. Ejecuta supabase/esquema.sql de nuevo en Supabase.';
+    if (json && json.code === '23505') return 'Este motor ya tiene una solicitud pendiente o aprobada.';
     if (json && json.code === '23514') return 'Algún valor no es válido (estado, ubicación, criticidad, tipo, números fuera de rango o textos muy largos).';
     return m || 'Error ' + estado + ' al contactar a Supabase.';
   }
@@ -175,6 +188,31 @@
     return f[0];
   }
 
+  async function solicitudes() {
+    return rest(T.solicitudes + '?select=*&order=id.desc&limit=500');
+  }
+
+  /** Responsables de cada faena, con su nombre: [{ faena, user_id, nombre }]. */
+  async function responsables() {
+    return rest('rpc/motorview_responsables_lista', { metodo: 'POST', cuerpo: {} });
+  }
+
+  /** Pide reservar un motor que está en otra faena (solo admin y mantenimiento). */
+  async function crearSolicitud(motorId, datos) {
+    var r = aSolicitud(motorId, datos);
+    if (r.errores.length) throw new Error(r.errores[0]);
+    var f = await rest(T.solicitudes, { metodo: 'POST', cuerpo: r.cuerpo, cabeceras: { Prefer: 'return=representation' } });
+    if (!f || !f.length) throw new Error('No se pudo registrar la solicitud: tu rol no permite pedir motores.');
+    return f[0];
+  }
+
+  /** Aprueba, rechaza, entrega o cancela una solicitud. El servidor comprueba quién puede hacerlo. */
+  async function gestionarSolicitud(id, accion, comentario) {
+    if (ACCIONES_SOLICITUD.indexOf(accion) < 0) throw new Error('Acción no válida.');
+    var c = comentario == null ? '' : String(comentario).trim();
+    return rest('rpc/motorview_gestionar_solicitud', { metodo: 'POST', cuerpo: { p_id: id, p_accion: accion, p_comentario: c === '' ? null : c } });
+  }
+
   /** Registro global: los últimos cambios de todos los motores y las reparaciones registradas. */
   async function cambios(limite) {
     var n = limite || 1000;
@@ -185,7 +223,7 @@
     return { historial: r[0], reparaciones: r[1] };
   }
 
-  var API = { deFila: deFila, aCambios: aCambios, aReparacion: aReparacion, mensaje: mensaje, perfil: perfil, motores: motores, guardar: guardar,
+  var API = { aSolicitud: aSolicitud, solicitudes: solicitudes, responsables: responsables, crearSolicitud: crearSolicitud, gestionarSolicitud: gestionarSolicitud, deFila: deFila, aCambios: aCambios, aReparacion: aReparacion, mensaje: mensaje, perfil: perfil, motores: motores, guardar: guardar,
               historial: historial, cambios: cambios, crearMotor: crearMotor, aMotorNuevo: aMotorNuevo, numeroDe: numeroDe, ESTADOS: ESTADOS, reparaciones: reparaciones, registrarReparacion: registrarReparacion, TIPOS_REPARACION: TIPOS_REPARACION };
   global.NUBE = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;

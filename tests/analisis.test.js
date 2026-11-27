@@ -151,3 +151,39 @@ test('csvCelda neutraliza fórmulas de Excel y deja intactos los números y el t
   assert.equal(csvCelda(null), '""');
   assert.equal(csvCelda('Bomba "A"'), '"Bomba ""A"""');
 });
+
+/* ---------- solicitudes entre faenas ---------- */
+const resp = [{ faena: 'Planta Magnetita', user_id: 'u-mag', nombre: 'Resp Magnetita' }];
+const sol = (o) => Object.assign({ id: 1, motor_id: 7, estado: 'Pendiente', faena_origen: 'Planta Magnetita', faena_destino: 'Los Colorados', solicitada_por: 'admin@cmp.cl' }, o);
+
+test('esResponsable: el responsable de la faena sí; sin responsables, solo un administrador', () => {
+  assert.equal(A.esResponsable('Planta Magnetita', resp, 'u-mag', 'mantenimiento'), true);
+  assert.equal(A.esResponsable('Planta Magnetita', resp, 'u-otro', 'admin'), false);       // hay responsable: el admin no basta
+  assert.equal(A.esResponsable('Los Colorados', resp, 'u-otro', 'admin'), true);           // sin responsables: admin
+  assert.equal(A.esResponsable('Los Colorados', resp, 'u-otro', 'mantenimiento'), false);
+  assert.equal(A.esResponsable('Los Colorados', [], 'u-x', 'consulta'), false);
+});
+
+test('accionesSolicitud: quién puede aprobar, rechazar, entregar y cancelar', () => {
+  const mag = { id: 'u-mag', email: 'resp@cmp.cl', rol: 'mantenimiento' };
+  const adm = { id: 'u-adm', email: 'admin@cmp.cl', rol: 'admin' };
+  const otro = { id: 'u-otro', email: 'otro@cmp.cl', rol: 'mantenimiento' };
+  assert.deepEqual(A.accionesSolicitud(sol(), mag, resp), ['aprobar', 'rechazar', 'cancelar']);
+  assert.deepEqual(A.accionesSolicitud(sol(), adm, resp), ['cancelar']);            // la pidió él: puede cancelarla, no aprobarla
+  assert.deepEqual(A.accionesSolicitud(sol(), otro, resp), []);
+  assert.deepEqual(A.accionesSolicitud(sol({ estado: 'Aprobada' }), mag, resp), ['entregar', 'cancelar']);
+  assert.deepEqual(A.accionesSolicitud(sol({ estado: 'Aprobada' }), adm, resp), ['cancelar']);
+  for (const e of ['Rechazada', 'Entregada', 'Cancelada']) assert.deepEqual(A.accionesSolicitud(sol({ estado: e }), mag, resp), []);
+  // sin responsables en la faena de origen: un administrador distinto de quien la pidió resuelve
+  const sinResp = sol({ faena_origen: 'Los Colorados', solicitada_por: 'resp@cmp.cl' });
+  assert.deepEqual(A.accionesSolicitud(sinResp, adm, resp), ['aprobar', 'rechazar', 'cancelar']);
+  assert.deepEqual(A.accionesSolicitud(sol({ faena_origen: 'Los Colorados', solicitada_por: 'ADMIN@cmp.cl' }), adm, resp), ['cancelar']);
+});
+
+test('solicitudViva encuentra la solicitud pendiente o aprobada de un motor', () => {
+  const l = [sol({ id: 1, estado: 'Entregada' }), sol({ id: 2, estado: 'Aprobada' }), sol({ id: 3, motor_id: 9 })];
+  assert.equal(A.solicitudViva(l, 7).id, 2);
+  assert.equal(A.solicitudViva(l, 9).id, 3);
+  assert.equal(A.solicitudViva(l, 1), null);
+  assert.equal(A.solicitudViva([sol({ estado: 'Cancelada' })], 7), null);
+});
