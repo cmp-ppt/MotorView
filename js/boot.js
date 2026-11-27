@@ -11,10 +11,12 @@
   async function entrar(s) {
     const p = await window.NUBE.perfil(s.id);
     if (!p) { await window.SESION.salir(); throw new Error('Tu cuenta existe pero no tiene acceso a MotorView. Pide al administrador que te asigne un perfil.'); }
-    const user = { email: s.email, nombre: p.nombre, rol: p.rol };
+    const user = { id: s.id, email: s.email, nombre: p.nombre, rol: p.rol };
     window.MV = { user, guardar: window.NUBE.guardar, historial: window.NUBE.historial, reparaciones: window.NUBE.reparaciones, cambios: window.NUBE.cambios,
                   crearMotor: window.NUBE.crearMotor, validarMotor: window.NUBE.aMotorNuevo,
-                  registrarReparacion: window.NUBE.registrarReparacion, tiposReparacion: window.NUBE.TIPOS_REPARACION };
+                  registrarReparacion: window.NUBE.registrarReparacion, tiposReparacion: window.NUBE.TIPOS_REPARACION,
+                  solicitudes: window.NUBE.solicitudes, responsables: window.NUBE.responsables, crearSolicitud: window.NUBE.crearSolicitud,
+                  gestionarSolicitud: window.NUBE.gestionarSolicitud, validarSolicitud: window.NUBE.aSolicitud, recargarMotores: window.NUBE.motores };
     window.MOTORES = await window.NUBE.motores();
     $('#login').hidden = true;
     $('#whoAv').textContent = user.nombre.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();

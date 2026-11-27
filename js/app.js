@@ -14,6 +14,24 @@ const fmt = (n, d = 0) => n == null ? '—' : n.toLocaleString('es-CL', {maximum
 const count = (arr, f) => arr.reduce((m, x) => { const k = f(x); m[k] = (m[k] || 0) + 1; return m; }, {});
 const state = {view:'resumen', q:'', estado:new Set(), area:'', volt:'', kwMin:'', cal:'', cols:{}, masOpen:true, sort:'numero', dir:1, limit:80};
 const canEdit = () => window.MV.user.rol !== 'consulta';
+let SOL = [], RESP = [], solError = '';          // solicitudes de motores entre faenas y responsables por faena
+const accionesDe = s => A.accionesSolicitud(s, window.MV.user, RESP);
+const porResolver = () => SOL.filter(s => { const a = accionesDe(s); return a.includes('aprobar') || a.includes('entregar'); });
+function pintarAviso() {
+  const n = porResolver().length, b = $('#navSol'); if (!b) return;
+  b.hidden = !n; b.textContent = n; b.title = n ? n + ' solicitud' + (n > 1 ? 'es requieren' : ' requiere') + ' tu acción' : '';
+}
+async function cargarSolicitudes() {
+  try { [SOL, RESP] = await Promise.all([window.MV.solicitudes(), window.MV.responsables()]); solError = ''; }
+  catch (err) { SOL = []; RESP = []; solError = err.message; }
+  pintarAviso();
+}
+async function recargarMotores() {
+  const nuevos = await window.MV.recargarMotores();
+  D.splice(0, D.length, ...nuevos); D.forEach(index); cambiosCache = null;
+  $('#fCount').textContent = D.length;
+  $('#heroSub').textContent = `${D.length} motores · ${[...new Set(D.map(m => m.faena))].join(' · ')}`;
+}
 const critPill = c => c && CRIT[c] ? `<span class="crit" style="--c:${CRIT[c].c}" title="Criticidad ${c}: ${CRIT[c].t}">${c}</span>` : '<span class="muted">—</span>';
 
 /* Íconos: motor según su montaje y tipo de faena */
@@ -290,7 +308,7 @@ function renderDisp() {
 
 /* ---------- vista Control de cambios: todo lo que se modificó, quién y cuándo ---------- */
 const ACCION = {
-  estado: ['Cambió estado', '#2f7fd0'], area: ['Cambió ubicación', '#0d9488'], observaciones: ['Editó observaciones', '#7b8696'],
+  estado: ['Cambió estado', '#2f7fd0'], area: ['Cambió ubicación', '#0d9488'], faena: ['Cambió de faena', '#0b7a6f'], observaciones: ['Editó observaciones', '#7b8696'],
   criticidad: ['Asignó criticidad', '#d23c3c'], reparacion: ['Registró reparación', '#8a5cf0'], alta: ['Ingresó motor', '#16a34a']};
 const nombreDe = email => { const l = String(email || '').split('@')[0]; return l ? l.charAt(0).toUpperCase() + l.slice(1) : '—'; };
 const recorte = (v, n = 70) => vacio(v) ? '—' : String(v).length > n ? String(v).slice(0, n) + '…' : String(v);
@@ -364,11 +382,108 @@ async function renderCambios() {
 
 /* ---------- ficha de motor ---------- */
 const dr = $('#drawer'), scrim = $('#scrim');
+
+/* ---------- solicitudes de motores entre faenas ---------- */
+const SOL_EST = {Pendiente: ['Pendiente', '#c9930a'], Aprobada: ['Aprobada · por entregar', '#2f7fd0'], Rechazada: ['Rechazada', '#d23c3c'],
+                 Entregada: ['Entregada', '#16a34a'], Cancelada: ['Cancelada', '#7b8696']};
+const SOL_ACC = {aprobar: ['Aprobar', 'acc'], rechazar: ['Rechazar', 'no'], entregar: ['Marcar como entregado', 'acc'], cancelar: ['Cancelar solicitud', 'no']};
+const solF = {filtro: 'abiertas', q: ''};
+const faenasConMotores = () => [...new Set(D.map(m => m.faena))];
+const respDe = f => RESP.filter(r => r.faena === f).map(r => r.nombre);
+const solVisibles = () => SOL.filter(s => {
+  if (solF.filtro === 'abiertas' && !(s.estado === 'Pendiente' || s.estado === 'Aprobada')) return false;
+  if (solF.filtro === 'cerradas' && (s.estado === 'Pendiente' || s.estado === 'Aprobada')) return false;
+  if (solF.q) { const m = motorDe(s.motor_id) || {}; if (!A.coincideBusqueda({numero: m.numero, tag: m.tag, descripcion: m.descripcion, area: m.area, observaciones: [s.faena_origen, s.faena_destino, s.solicitada_por, s.resuelta_por, s.motivo, s.comentario].join(' ')}, solF.q)) return false; }
+  return true;
+});
+function llenarSolicitudes() {
+  const l = solVisibles();
+  $('#solCnt').textContent = `${l.length} solicitud${l.length === 1 ? '' : 'es'}`;
+  $('#solTb').innerHTML = l.length ? l.map(s => {
+    const m = motorDe(s.motor_id), e = SOL_EST[s.estado] || [s.estado, '#7b8696'], acc = accionesDe(s).some(a => a === 'aprobar' || a === 'entregar');
+    return `<tr data-sol="${s.id}" class="${acc ? 'accion' : ''}"><td class="mono">N° ${s.id}<small>${fechaHora(s.solicitada_en)}</small></td>
+      <td>${m ? `<b>N° ${m.numero ?? '—'}</b><small>${esc(m.tag || m.descripcion || m.area)} · ${fmt(m.kw, 1)} kW</small>` : `<span class="muted">Motor ${s.motor_id}</span>`}</td>
+      <td>${esc(s.faena_origen)}<span class="flecha">→</span><b>${esc(s.faena_destino)}</b></td>
+      <td><b>${esc(nombreDe(s.solicitada_por))}</b><small>${esc(recorte(s.motivo, 90))}</small></td>
+      <td><span class="tagacc" style="--c:${e[1]}">${esc(e[0])}</span>${acc ? '<br><span class="aviso">Requiere tu acción</span>' : ''}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="empty">${SOL.length ? 'Sin solicitudes con estos filtros' : 'Aún no hay solicitudes. Para pedir un motor de otra faena, ábrelo desde Inventario y usa “Solicitar reserva”.'}</td></tr>`;
+  $$('#solTb tr[data-sol]').forEach(r => r.onclick = () => abrirSolicitud(+r.dataset.sol));
+}
+async function renderSolicitudes() {
+  const root = $('#v-solicitudes');
+  root.innerHTML = '<div class="card"><p class="note" style="margin:0">Cargando solicitudes…</p></div>';
+  await cargarSolicitudes();
+  if (state.view !== 'solicitudes') return;
+  if (solError) { root.innerHTML = `<div class="card"><p class="note bad" style="margin:0">${esc(solError)}</p></div>`; return; }
+  const n = porResolver().length, abiertas = SOL.filter(s => s.estado === 'Pendiente' || s.estado === 'Aprobada').length;
+  root.innerHTML = `
+  <div class="card camhead"><div><h3>Solicitudes de motores entre faenas</h3><div class="sub" style="margin:0">Una faena pide un motor (en taller o de repuesto) que está en otra. El responsable de la faena que lo tiene aprueba o rechaza; al aprobar, el motor queda reservado hasta su entrega.${n ? ` <b>${n} requiere${n > 1 ? 'n' : ''} tu acción.</b>` : ''}</div></div>
+    <div class="camact"><button class="btn sec" id="solAct">Actualizar</button></div></div>
+  <div class="card"><h3 style="margin:0">Responsables por faena</h3>
+    <div class="respg">${faenasConMotores().sort().map(f => { const r = respDe(f); return `<div><b>${esc(f)}</b>${r.length ? `<span>${esc(r.join(' · '))}</span>` : '<span class="sin">Sin responsable: resuelve un administrador</span>'}</div>`; }).join('')}</div></div>
+  <div class="tools" style="margin-top:14px">
+    ${[['abiertas', `Abiertas (${abiertas})`], ['cerradas', 'Cerradas'], ['todas', 'Todas']].map(([k, t]) => `<button class="chip ${solF.filtro === k ? 'on' : ''}" data-sf="${k}">${t}</button>`).join('')}
+    <input class="chip ${solF.q ? 'on' : ''}" id="solQ" placeholder="Buscar motor, faena o motivo…" value="${esc(solF.q)}" style="width:230px">
+    <span class="count" id="solCnt"></span></div>
+  <div class="card tablewrap"><table class="sol"><thead><tr><th>Solicitud</th><th>Motor</th><th>De → a</th><th>Solicitó / motivo</th><th>Estado</th></tr></thead><tbody id="solTb"></tbody></table></div>`;
+  $$('[data-sf]', root).forEach(b => b.onclick = () => { solF.filtro = b.dataset.sf; renderSolicitudes(); });
+  $('#solQ').oninput = e => { solF.q = e.target.value; e.target.classList.toggle('on', !!solF.q); llenarSolicitudes(); };
+  $('#solAct').onclick = () => renderSolicitudes();
+  llenarSolicitudes();
+}
+function abrirSolicitud(id) {
+  const s = SOL.find(x => x.id === id); if (!s) return;
+  const m = motorDe(s.motor_id), e = SOL_EST[s.estado] || [s.estado, '#7b8696'], acc = accionesDe(s);
+  const kv = (l, v) => `<div><span>${l}</span><b>${v == null || v === '' ? '—' : esc(v)}</b></div>`;
+  dr.dataset.id = '';
+  dr.innerHTML = `
+  <div class="dh"><button class="x" id="dx">✕</button><small>Solicitud N° ${s.id}</small><h2>${esc(s.faena_origen)} → ${esc(s.faena_destino)}</h2><p>${m ? `Motor N° ${esc(m.numero ?? '—')} · ${esc(m.descripcion || m.tag || m.area)}` : 'Motor ' + s.motor_id}</p><span class="pill" style="--c:${e[1]}">${esc(e[0])}</span></div>
+  <div class="sec"><h4>Detalle</h4><div class="kv">${kv('Solicitó', s.solicitada_por)}${kv('Fecha', fechaHora(s.solicitada_en))}${kv('Desde', s.faena_origen)}${kv('Hacia', s.faena_destino)}</div><p class="note"><b>Motivo:</b> ${esc(s.motivo)}</p></div>
+  ${s.resuelta_por || s.entregada_por ? `<div class="sec"><h4>Resolución</h4><div class="kv">${kv(s.estado === 'Rechazada' ? 'Rechazó' : s.estado === 'Cancelada' ? 'Canceló' : 'Aprobó', s.resuelta_por)}${kv('Fecha', fechaHora(s.resuelta_en))}${s.entregada_por ? kv('Entregó', s.entregada_por) + kv('Fecha de entrega', fechaHora(s.entregada_en)) : ''}</div>${s.comentario ? `<p class="note"><b>Comentario:</b> ${esc(s.comentario)}</p>` : ''}</div>` : ''}
+  ${acc.length ? `<form class="sec eform" id="solForm"><h4>Qué quieres hacer</h4>
+    <label>Comentario (opcional)<input name="com" maxlength="300" placeholder="Ej: retirar en la bodega con la guía de despacho"></label>
+    <div class="solact">${acc.map(a => `<button class="btn ${SOL_ACC[a][1]}" type="button" data-acc="${a}">${SOL_ACC[a][0]}</button>`).join('')}</div><span id="solMsg"></span></form>`
+    : `<div class="sec"><p class="note" style="margin:0">${s.estado === 'Pendiente' ? `Esperando la resolución del responsable de ${esc(s.faena_origen)}.` : s.estado === 'Aprobada' ? `Reservado. El responsable de ${esc(s.faena_origen)} registrará la entrega.` : 'Esta solicitud ya está cerrada.'}</p></div>`}
+  ${m ? '<div class="sec"><button class="btn sec" id="solFicha" type="button">Ver la ficha del motor</button></div>' : ''}`;
+  $('#dx', dr).onclick = closeDrawer;
+  const f = $('#solFicha', dr); if (f) f.onclick = () => openDrawer(m.id);
+  $$('[data-acc]', dr).forEach(b => b.onclick = async () => {
+    const msg = $('#solMsg', dr), com = $('#solForm', dr).elements.com.value;
+    $$('[data-acc]', dr).forEach(x => x.disabled = true); msg.className = ''; msg.textContent = 'Procesando…';
+    try {
+      await window.MV.gestionarSolicitud(s.id, b.dataset.acc, com);
+      await Promise.all([cargarSolicitudes(), recargarMotores()]);
+      if (state.view === 'solicitudes') renderSolicitudes();
+      abrirSolicitud(s.id);
+    } catch (err) { msg.className = 'bad'; msg.textContent = err.message; $$('[data-acc]', dr).forEach(x => x.disabled = false); }
+  });
+  dr.classList.add('on'); scrim.classList.add('on'); dr.scrollTop = 0;
+}
+
 function compat(m) {
   if (!m.kw) return [];
   return D.filter(x => x.estado === 'Repuesto' && x.id !== m.id && x.kw && Math.abs(x.kw - m.kw) / m.kw <= .1 && (!m.volt || !x.volt || x.volt === m.volt) && (!m.rpm || !x.rpm || Math.abs(x.rpm - m.rpm) / m.rpm <= .08));
 }
 const fechaCorta = f => /^\d{4}-\d{2}-\d{2}$/.test(f) ? new Date(f + 'T12:00:00').toLocaleDateString('es-CL') : '—';
+/* Sección de la ficha: pedir el motor para otra faena, o ver el estado de la solicitud vigente. */
+function bloqueSolicitud(m) {
+  const viva = A.solicitudViva(SOL, m.id);
+  if (viva) {
+    const e = SOL_EST[viva.estado];
+    return `<div class="sec"><h4>Solicitud de reserva</h4><div class="vivo"><span class="tagacc" style="--c:${e[1]}">${esc(e[0])}</span>
+      Pedido para <b>${esc(viva.faena_destino)}</b> por ${esc(nombreDe(viva.solicitada_por))}.<br><small>${esc(recorte(viva.motivo, 120))}</small></div>
+      <button class="btn sec" id="solVer" type="button" style="margin-top:10px">Ver la solicitud</button></div>`;
+  }
+  if (!canEdit() || !(m.estado === 'Taller' || m.estado === 'Repuesto')) return '';
+  const mias = RESP.filter(r => r.user_id === window.MV.user.id).map(r => r.faena);
+  const opciones = [...new Set([...FAENAS, ...faenasConMotores()])].filter(f => f !== m.faena);
+  const porDefecto = mias.find(f => f !== m.faena) || '';
+  return `<form class="sec eform" id="solNueva"><h4>Solicitar este motor para otra faena</h4>
+    <p class="note" style="margin:0">El responsable de ${esc(m.faena)} recibirá la solicitud y debe aprobarla en la aplicación. Si la aprueba, el motor queda reservado.</p>
+    <label>Faena que lo necesita<select name="faena"><option value="">Elige una faena…</option>${opciones.map(f => `<option ${f === porDefecto ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
+    <label>Motivo de la solicitud<textarea name="motivo" rows="2" maxlength="300" placeholder="Ej: falla del motor de la bomba 3; se necesita antes del viernes"></textarea></label>
+    <div class="erow"><button class="btn" type="submit">Enviar solicitud</button><span id="solNMsg"></span></div></form>`;
+}
 function openDrawer(id) {
   const m = D.find(x => x.id === id); if (!m) return;
   const kv = (l, v) => `<div><span>${l}</span><b>${v == null || v === '' ? '—' : esc(v)}</b></div>`;
@@ -400,6 +515,7 @@ function openDrawer(id) {
       <div class="erow"><button class="btn" type="submit">Guardar reparación</button><span id="repMsg"></span></div></form>` : ''}
     <div id="repList" class="histl">Cargando…</div></div>
   ${cs.length ? `<div class="sec"><h4>Repuestos compatibles (${cs.length})</h4><div class="rep">${cs.slice(0, 6).map(x => `<button data-id="${x.id}"><b>N° ${x.numero ?? '—'}</b><div>${fmt(x.kw, 1)} kW · ${x.volt ? fmt(x.volt) + ' V' : 's/d'} · ${x.rpm ? fmt(x.rpm) + ' rpm' : 's/d'}<small>${esc(x.tag || x.descripcion || 'Bodega')}</small></div></button>`).join('')}</div></div>` : (m.estado === 'En servicio' ? `<div class="sec"><h4>Repuestos compatibles</h4><p class="note">No hay repuestos en bodega con potencia, tensión y velocidad similares.</p></div>` : '')}
+  ${bloqueSolicitud(m)}
   <div class="sec"><h4>Historial de cambios</h4><div id="hist" class="histl">Cargando…</div></div>`;
   dr.dataset.id = m.id;
   $$('[data-id]', dr).forEach(b => b.onclick = () => openDrawer(+b.dataset.id));
@@ -414,7 +530,7 @@ function openDrawer(id) {
       index(m); refresh(); openDrawer(m.id);
     } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
   };
-  const CAMPO = {estado: 'Estado', area: 'Ubicación', observaciones: 'Observaciones', criticidad: 'Criticidad', alta: 'Alta del motor'};
+  const CAMPO = {estado: 'Estado', area: 'Ubicación', faena: 'Faena', observaciones: 'Observaciones', criticidad: 'Criticidad', alta: 'Alta del motor'};
   window.MV.historial(m.id).then(h => {
     const el = $('#hist'); if (!el || dr.dataset.id != m.id) return;
     el.innerHTML = h.length ? h.map(x => `<div class="hi"><b>${esc(CAMPO[x.campo] || x.campo)}</b>: ${esc(x.anterior ?? '—')} → <b>${esc(x.nuevo ?? '—')}</b><small>${esc(x.usuario)} · ${new Date(x.fecha).toLocaleString('es-CL')}${x.comentario ? ' · “' + esc(x.comentario) + '”' : ''}</small></div>`).join('') : '<p class="note" style="margin:0">Sin cambios registrados desde la importación del Excel.</p>';
@@ -439,6 +555,16 @@ function openDrawer(id) {
       } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
     };
   }
+  const sv = $('#solVer', dr); if (sv) sv.onclick = () => abrirSolicitud(A.solicitudViva(SOL, m.id).id);
+  const sn = $('#solNueva', dr);
+  if (sn) sn.onsubmit = async e => {
+    e.preventDefault(); const msg = $('#solNMsg'), f = sn.elements;
+    const v = window.MV.validarSolicitud(m.id, {faena: f.faena.value, motivo: f.motivo.value});
+    if (v.errores.length) { msg.className = 'bad'; msg.textContent = v.errores[0]; return; }
+    msg.className = ''; msg.textContent = 'Enviando…'; sn.querySelector('button').disabled = true;
+    try { await window.MV.crearSolicitud(m.id, {faena: f.faena.value, motivo: f.motivo.value}); await cargarSolicitudes(); openDrawer(m.id); }
+    catch (err) { msg.className = 'bad'; msg.textContent = err.message; sn.querySelector('button').disabled = false; }
+  };
   $('#dx').onclick = closeDrawer; dr.classList.add('on'); scrim.classList.add('on'); dr.scrollTop = 0;
 }
 /* ---------- ingreso de un motor nuevo (admin y mantenimiento) ---------- */
@@ -499,13 +625,14 @@ function abrirNuevoMotor() {
   dr.classList.add('on'); scrim.classList.add('on'); dr.scrollTop = 0; nf.elements.numero.focus();
 }
 
-const VISTAS = {resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp, calidad: renderCalidad, cambios: renderCambios};
+const VISTAS = {resumen: renderResumen, inventario: renderInventario, disponibilidad: renderDisp, calidad: renderCalidad, cambios: renderCambios, solicitudes: renderSolicitudes};
 const refresh = () => VISTAS[state.view]();
 function closeDrawer() { dr.classList.remove('on'); scrim.classList.remove('on'); }
 scrim.onclick = closeDrawer;
 
 /* ---------- navegación ---------- */
-const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Cobertura de repuestos, reservados, en transporte y en reparación'], calidad: ['Calidad de datos', 'Qué falta o está mal en la planilla, para corregirlo con Mantenimiento'], cambios: ['Control de cambios', 'Quién modificó qué y cuándo: estados, ubicaciones, criticidad y reparaciones']};
+const META = {resumen: ['Resumen', 'Panorama general de motores eléctricos de la faena'], inventario: ['Inventario', 'Busca, filtra y revisa la ficha técnica de cada motor'], disponibilidad: ['Disponibilidad', 'Cobertura de repuestos, reservados, en transporte y en reparación'], calidad: ['Calidad de datos', 'Qué falta o está mal en la planilla, para corregirlo con Mantenimiento'], cambios: ['Control de cambios', 'Quién modificó qué y cuándo: estados, ubicaciones, criticidad y reparaciones'],
+              solicitudes: ['Solicitudes entre faenas', 'Pedir y aprobar la reserva de motores que están en otra faena']};
 function go(view, filters) {
   if (filters) { Object.assign(state, {estado: new Set(), area: '', volt: '', kwMin: '', cal: '', cols: {}, limit: 80}); for (const [k, v] of Object.entries(filters)) state[k] = k === 'estado' ? new Set([v]) : v; }
   state.view = view;
@@ -525,4 +652,5 @@ $('#theme').onclick = () => { root.dataset.theme = root.dataset.theme === 'dark'
 $('#fCount').textContent = D.length;
 $('#heroSub').textContent = `${D.length} motores · ${[...new Set(D.map(m => m.faena))].join(' · ')}`;
 go('resumen');
+cargarSolicitudes();
 })();

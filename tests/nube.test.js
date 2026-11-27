@@ -90,3 +90,18 @@ test('aMotorNuevo separa el voltaje en número y texto', () => {
   assert.equal(r.cuerpo.volt, 380); assert.equal(r.cuerpo.volt_txt, '380/660');
   assert.equal(N.aMotorNuevo({ faena: 'F', area: 'A', volt: '4,16' }).cuerpo.volt, 4.16);
 });
+
+/* ---------- solicitudes entre faenas ---------- */
+test('aSolicitud arma el cuerpo y exige faena y motivo', () => {
+  const ok = N.aSolicitud(7, { faena: ' Los Colorados ', motivo: '  Falla   de la bomba 3 ', estado: 'Aprobada', solicitada_por: 'x@y.cl' });
+  assert.deepEqual(ok.cuerpo, { motor_id: 7, faena_destino: 'Los Colorados', motivo: 'Falla de la bomba 3' });
+  assert.deepEqual(ok.errores, []);
+  assert.match(N.aSolicitud(7, { faena: '', motivo: 'urgente' }).errores.join(' '), /faena/);
+  assert.match(N.aSolicitud(7, { faena: 'F', motivo: 'a' }).errores.join(' '), /motivo/);
+  assert.match(N.aSolicitud(7, { faena: 'F', motivo: 'x'.repeat(301) }).errores.join(' '), /300/);
+});
+
+test('mensaje explica una solicitud duplicada y una base sin la función nueva', () => {
+  assert.match(N.mensaje(409, { code: '23505' }), /solicitud pendiente o aprobada/);
+  assert.match(N.mensaje(404, { code: 'PGRST202' }), /esquema\.sql/);
+});

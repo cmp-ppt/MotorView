@@ -251,3 +251,19 @@ table.cam{min-width:820px}.cam td{white-space:normal;vertical-align:top}.cam tbo
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .nuevo h4{margin:8px 0 0}
 .erow .btn.sec{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+
+/* ===== solicitudes de motores entre faenas ===== */
+.badge{margin-left:auto;background:var(--accent);color:#fff;border-radius:20px;min-width:20px;padding:1px 7px;font-size:11.5px;font-weight:700;text-align:center}
+.nav.on .badge{background:#fff;color:var(--accent)}
+table.sol{min-width:860px}.sol td{white-space:normal;vertical-align:top}.sol tbody tr{cursor:pointer}
+.sol td small{display:block;color:var(--ink2);font-size:12px;margin-top:2px}
+.sol td.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:var(--ink2);white-space:nowrap}
+.sol .flecha{color:var(--ink2);padding:0 4px}
+.sol tr.accion td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.aviso{display:inline-block;margin-top:4px;padding:2px 9px;border-radius:6px;background:rgba(232,116,42,.15);color:var(--accent);font-size:11.5px;font-weight:700}
+.respg{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:10px}
+.respg div{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;line-height:1.45}
+.respg b{display:block;font-size:13px}.respg span{font-size:12.5px;color:var(--ink2)}.respg .sin{color:#c9930a}
+.solact{display:flex;flex-wrap:wrap;gap:10px}
+.solact .btn.no{background:var(--panel);color:#d23c3c;border:1px solid #d23c3c}
+.vivo{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;line-height:1.5}

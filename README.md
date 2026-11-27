@@ -18,6 +18,10 @@ los usuarios y el login en **Supabase**.
   reparaciones e ingresos de motores. Se filtra por acción y usuario, se busca por motor o detalle, se exporta a CSV y cada fila abre la ficha.
 - **Calidad de datos:** qué falta o está mal en la planilla (sin área, sin TAG, N° repetido, datos de placa o cos φ faltantes,
   sin criticidad). Cada problema abre la lista de motores afectados.
+- **Solicitudes entre faenas:** `admin` y `mantenimiento` piden la reserva de un motor (en taller o de repuesto) que está en otra faena, desde su ficha ("Solicitar este motor").
+  El **responsable de la faena** que lo tiene lo aprueba o rechaza en la sección Solicitudes (con insignia de pendientes). Al aprobar, el motor queda *Reservado*; cuando se entrega,
+  el responsable lo marca como entregado y el motor pasa a la faena que lo pidió. Se puede cancelar mientras no se entregue (el motor vuelve a su estado). Quien pide no puede aprobar su propia solicitud.
+  Si una faena no tiene responsables, la resuelve un administrador distinto de quien la pidió. Todo queda en el control de cambios. *(Los correos de aviso se agregarán en una segunda etapa.)*
 - **Reparaciones y rebobinados:** historial por motor (tipo, fecha, taller, trabajo, pruebas y garantía), solo se agrega.
 - **Criticidad A, B o C** por motor, con un indicador de críticos por área.
 - **Ingreso de motores nuevos** desde Inventario (botón "+ Nuevo motor", para `admin` y `mantenimiento`): formulario con las mismas columnas de la planilla,
@@ -47,6 +51,14 @@ los usuarios y el login en **Supabase**.
 | `admin` | Ver todo y editar |
 | `mantenimiento` | Ver y editar estado, ubicación, criticidad y observaciones; registrar reparaciones; ingresar motores nuevos |
 | `consulta` | Solo ver |
+
+**Responsables por faena:** son quienes aprueban las solicitudes de motores de su faena (puede haber varios). Se asignan en el SQL Editor:
+
+```sql
+insert into public.motorview_responsables (faena, user_id)
+select 'Planta Magnetita', id from auth.users where email = 'persona@cmp.cl'
+on conflict do nothing;
+```
 
 Una cuenta de Supabase **sin perfil activo no ve ningún motor**. Para quitar acceso: `update public.motorview_perfiles set activo = false where …`.
 
@@ -86,6 +98,8 @@ El listado trae datos faltantes o inconsistentes (38 motores quedan "Sin clasifi
   (quién y cuándo lo registró lo pone la base); no hay insert ni delete de motores desde la app.
 - No hay registro desde la aplicación: las cuentas las crea el administrador en Supabase.
 - La política de contenido (`Content-Security-Policy`) solo permite scripts propios y conexiones a `*.supabase.co`.
+- Las solicitudes entre faenas solo se crean con permiso por columna y solo se resuelven con la función `motorview_gestionar_solicitud`, que comprueba en el servidor quién es el responsable;
+  nadie edita ni borra solicitudes desde la aplicación.
 - Comprobación: `set role anon; select count(*) from public.motorview_motores;` debe fallar con *permission denied*.
 
 ## Pruebas
@@ -110,7 +124,7 @@ tests/                  pruebas de sesión, mapeo de datos y análisis
 ```
 
 ## Próximos pasos
-Carga de las demás faenas y traspaso de motores entre ellas, etiquetas QR por motor, gestión de usuarios desde la interfaz,
+Carga de las demás faenas, correos de aviso y de aprobación de las solicitudes entre faenas, etiquetas QR por motor, gestión de usuarios desde la interfaz,
 carga de planillas por el administrador, respaldos y campos adicionales de la ficha.
 
 El logo de CMP (`img/cmp.png`) es marca de la compañía y se usa con su autorización.

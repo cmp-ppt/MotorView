@@ -165,8 +165,38 @@
     return '"' + t.replace(/"/g, '""') + '"';
   }
 
+  /* ---------- solicitudes de motores entre faenas ---------- */
+  /** ¿Puede esta persona resolver (aprobar, rechazar, entregar) las solicitudes de motores de esa faena?
+   *  Sí si es su responsable; si la faena no tiene responsables, un administrador. */
+  function esResponsable(faena, responsables, userId, rol) {
+    var rs = (responsables || []).filter(function (r) { return r.faena === faena; });
+    if (rs.some(function (r) { return r.user_id === userId; })) return true;
+    return rs.length === 0 && rol === 'admin';
+  }
+
+  /** Acciones disponibles para el usuario en una solicitud: aprobar, rechazar, entregar, cancelar. */
+  function accionesSolicitud(s, user, responsables) {
+    var mia = String(s.solicitada_por || '').toLowerCase() === String(user.email || '').toLowerCase();
+    var puede = esResponsable(s.faena_origen, responsables, user.id, user.rol);
+    var out = [];
+    if (s.estado === 'Pendiente') {
+      if (puede && !mia) out.push('aprobar', 'rechazar');
+      if (mia || puede) out.push('cancelar');
+    } else if (s.estado === 'Aprobada') {
+      if (puede) out.push('entregar');
+      if (mia || puede) out.push('cancelar');
+    }
+    return out;
+  }
+
+  /** Solicitud pendiente o aprobada de un motor (un motor solo puede tener una a la vez). */
+  function solicitudViva(solicitudes, motorId) {
+    return (solicitudes || []).find(function (s) { return s.motor_id === motorId && (s.estado === 'Pendiente' || s.estado === 'Aprobada'); }) || null;
+  }
+
   var API = { numerosRepetidos: numerosRepetidos, calidad: calidad, polos: polos, cobertura: cobertura, criticosPorArea: criticosPorArea,
-               indiceBusqueda: indiceBusqueda, coincideBusqueda: coincideBusqueda, compacto: compacto, unirCambios: unirCambios, csvCelda: csvCelda };
+               indiceBusqueda: indiceBusqueda, coincideBusqueda: coincideBusqueda, compacto: compacto, unirCambios: unirCambios, csvCelda: csvCelda,
+               esResponsable: esResponsable, accionesSolicitud: accionesSolicitud, solicitudViva: solicitudViva };
   global.ANALISIS = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

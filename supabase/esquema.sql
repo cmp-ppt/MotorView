@@ -120,6 +120,11 @@ begin
     values (old.id, quien, 'area', old.area, new.area, new.motivo);
     cambio := true;
   end if;
+  if new.faena is distinct from old.faena then
+    insert into public.motorview_historial (motor_id, usuario, campo, anterior, nuevo, comentario)
+    values (old.id, quien, 'faena', old.faena, new.faena, new.motivo);
+    cambio := true;
+  end if;
   if new.observaciones is distinct from old.observaciones then
     insert into public.motorview_historial (motor_id, usuario, campo, anterior, nuevo, comentario)
     values (old.id, quien, 'observaciones', old.observaciones, new.observaciones, new.motivo);
@@ -214,6 +219,160 @@ create trigger motorview_reparaciones_sello
   for each row execute function public.motorview_reparaciones_sello();
 
 -- ------------------------------------------------------------
+-- RESPONSABLES POR FAENA Y SOLICITUDES DE MOTORES ENTRE FAENAS
+--
+-- Cada faena tiene uno o más responsables. Un administrador o personal de mantenimiento
+-- puede solicitar la reserva de un motor (en taller o de repuesto) que está en OTRA faena;
+-- el responsable de la faena que lo tiene debe aprobar o rechazar la solicitud en la aplicación.
+--   Pendiente → Aprobada (el motor queda "Reservado") → Entregada (el motor pasa a la faena que lo pidió)
+--   Pendiente → Rechazada · Pendiente o Aprobada → Cancelada (el motor vuelve a su estado)
+-- Si una faena aún no tiene responsables, la resuelve un administrador distinto de quien la pidió.
+-- Todo cambio pasa por la función motorview_gestionar_solicitud: nadie edita solicitudes a mano.
+-- ------------------------------------------------------------
+create table if not exists public.motorview_responsables (
+  faena    text not null check (char_length(faena) between 1 and 60),
+  user_id  uuid not null references auth.users(id) on delete cascade,
+  primary key (faena, user_id)
+);
+
+-- Responsables con su nombre (la tabla de perfiles solo es visible para su dueño y el admin).
+create or replace function public.motorview_responsables_lista()
+returns table (faena text, user_id uuid, nombre text)
+language sql stable security definer set search_path = public as $$
+  select r.faena, r.user_id, p.nombre
+  from public.motorview_responsables r
+  join public.motorview_perfiles p on p.user_id = r.user_id and p.activo
+  where public.motorview_rol() is not null
+  order by r.faena, p.nombre
+$$;
+revoke all on function public.motorview_responsables_lista() from public, anon;
+grant execute on function public.motorview_responsables_lista() to authenticated;
+
+create table if not exists public.motorview_solicitudes (
+  id              bigint generated always as identity primary key,
+  motor_id        bigint not null references public.motorview_motores(id) on delete cascade,
+  faena_origen    text not null,                       -- faena que tiene el motor (la pone el servidor)
+  faena_destino   text not null check (char_length(faena_destino) between 1 and 60),
+  motivo          text not null check (char_length(btrim(motivo)) between 3 and 300),
+  estado          text not null default 'Pendiente' check (estado in ('Pendiente','Aprobada','Rechazada','Entregada','Cancelada')),
+  estado_motor    text,                                -- estado del motor al pedirlo; a él vuelve si se cancela
+  solicitada_por  text not null,
+  solicitada_en   timestamptz not null default now(),
+  resuelta_por    text,
+  resuelta_en     timestamptz,
+  comentario      text check (char_length(comentario) <= 300),
+  entregada_por   text,
+  entregada_en    timestamptz
+);
+create index if not exists motorview_solicitudes_motor_idx on public.motorview_solicitudes (motor_id);
+create index if not exists motorview_solicitudes_estado_idx on public.motorview_solicitudes (estado, solicitada_en desc);
+-- un motor no puede tener dos solicitudes vivas a la vez
+create unique index if not exists motorview_solicitudes_viva_idx on public.motorview_solicitudes (motor_id) where estado in ('Pendiente','Aprobada');
+
+-- Al crearla, el servidor pone quién, cuándo, la faena de origen y el estado; y valida el pedido.
+create or replace function public.motorview_solicitudes_alta()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare m record;
+begin
+  select faena, estado into m from public.motorview_motores where id = new.motor_id;
+  if not found then raise exception 'El motor no existe.'; end if;
+  if m.faena = new.faena_destino then raise exception 'El motor ya está en %.', new.faena_destino; end if;
+  if m.estado not in ('Taller','Repuesto') then raise exception 'Solo se pueden solicitar motores en taller o de repuesto.'; end if;
+  new.faena_origen   := m.faena;
+  new.estado_motor   := m.estado;
+  new.estado         := 'Pendiente';
+  new.solicitada_por := coalesce(auth.jwt() ->> 'email', current_user);
+  new.solicitada_en  := now();
+  new.resuelta_por := null; new.resuelta_en := null; new.comentario := null; new.entregada_por := null; new.entregada_en := null;
+  return new;
+end $$;
+
+drop trigger if exists motorview_solicitudes_alta on public.motorview_solicitudes;
+create trigger motorview_solicitudes_alta
+  before insert on public.motorview_solicitudes
+  for each row execute function public.motorview_solicitudes_alta();
+
+-- Aprobar, rechazar, entregar o cancelar una solicitud. Comprueba quién puede hacerlo.
+create or replace function public.motorview_gestionar_solicitud(p_id bigint, p_accion text, p_comentario text default null)
+returns public.motorview_solicitudes
+language plpgsql security definer set search_path = public as $$
+declare
+  s        public.motorview_solicitudes;
+  m        record;
+  quien    text := auth.jwt() ->> 'email';
+  rol      text := public.motorview_rol();
+  com      text := nullif(btrim(p_comentario), '');
+  hay_resp boolean;
+  soy_resp boolean;
+  puede    boolean;
+  mia      boolean;
+begin
+  if quien is null or rol is null then raise exception 'Tu cuenta no tiene acceso a MotorView.'; end if;
+  if p_accion not in ('aprobar','rechazar','entregar','cancelar') then raise exception 'Acción no válida.'; end if;
+  if com is not null and char_length(com) > 300 then raise exception 'El comentario puede tener hasta 300 caracteres.'; end if;
+
+  select * into s from public.motorview_solicitudes where id = p_id for update;
+  if not found then raise exception 'La solicitud no existe.'; end if;
+
+  select exists (select 1 from public.motorview_responsables where faena = s.faena_origen) into hay_resp;
+  select exists (select 1 from public.motorview_responsables where faena = s.faena_origen and user_id = auth.uid()) into soy_resp;
+  puede := soy_resp or (not hay_resp and rol = 'admin');      -- sin responsables, resuelve un administrador
+  mia   := lower(s.solicitada_por) = lower(quien);
+
+  if p_accion in ('aprobar','rechazar') then
+    if s.estado <> 'Pendiente' then raise exception 'La solicitud ya fue resuelta.'; end if;
+    if not puede then raise exception 'Solo el responsable de % (o un administrador, si la faena no tiene responsables) puede resolver esta solicitud.', s.faena_origen; end if;
+    if mia then raise exception 'No puedes resolver una solicitud hecha por ti.'; end if;
+
+    if p_accion = 'rechazar' then
+      update public.motorview_solicitudes set estado = 'Rechazada', resuelta_por = quien, resuelta_en = now(), comentario = com
+       where id = s.id returning * into s;
+      return s;
+    end if;
+
+    select faena, estado into m from public.motorview_motores where id = s.motor_id for update;
+    if m.faena <> s.faena_origen or m.estado not in ('Taller','Repuesto') then
+      raise exception 'El motor cambió de faena o de estado y ya no se puede reservar. Rechaza la solicitud.';
+    end if;
+    update public.motorview_motores
+       set estado = 'Reservado', motivo = left('Reservado para ' || s.faena_destino || ' (solicitud N° ' || s.id || ')', 300)
+     where id = s.motor_id;
+    update public.motorview_solicitudes set estado = 'Aprobada', estado_motor = m.estado, resuelta_por = quien, resuelta_en = now(), comentario = com
+     where id = s.id returning * into s;
+    return s;
+
+  elsif p_accion = 'entregar' then
+    if s.estado <> 'Aprobada' then raise exception 'Solo se puede entregar una solicitud aprobada.'; end if;
+    if not puede then raise exception 'Solo el responsable de % (o un administrador, si la faena no tiene responsables) puede registrar la entrega.', s.faena_origen; end if;
+    select faena, estado into m from public.motorview_motores where id = s.motor_id for update;
+    if m.faena <> s.faena_origen or m.estado <> 'Reservado' then
+      raise exception 'El motor ya no está reservado en %.', s.faena_origen;
+    end if;
+    update public.motorview_motores
+       set faena = s.faena_destino, estado = 'Repuesto', area = 'Por asignar',
+           motivo = left('Entregado a ' || s.faena_destino || ' (solicitud N° ' || s.id || ')', 300)
+     where id = s.motor_id;
+    update public.motorview_solicitudes set estado = 'Entregada', entregada_por = quien, entregada_en = now(), comentario = coalesce(com, comentario)
+     where id = s.id returning * into s;
+    return s;
+
+  else  -- cancelar
+    if s.estado not in ('Pendiente','Aprobada') then raise exception 'Solo se puede cancelar una solicitud pendiente o aprobada.'; end if;
+    if not (mia or puede) then raise exception 'Solo quien la pidió o el responsable de % puede cancelarla.', s.faena_origen; end if;
+    if s.estado = 'Aprobada' then
+      update public.motorview_motores
+         set estado = coalesce(s.estado_motor, 'Repuesto'), motivo = left('Reserva cancelada (solicitud N° ' || s.id || ')', 300)
+       where id = s.motor_id and estado = 'Reservado';
+    end if;
+    update public.motorview_solicitudes set estado = 'Cancelada', resuelta_por = quien, resuelta_en = now(), comentario = coalesce(com, comentario)
+     where id = s.id returning * into s;
+    return s;
+  end if;
+end $$;
+revoke all on function public.motorview_gestionar_solicitud(bigint, text, text) from public, anon;
+grant execute on function public.motorview_gestionar_solicitud(bigint, text, text) to authenticated;
+
+-- ------------------------------------------------------------
 -- PERMISOS Y RLS
 --
 -- Supabase da permisos amplios por defecto a `anon` y `authenticated`;
@@ -229,9 +388,14 @@ alter table public.motorview_perfiles  enable row level security;
 alter table public.motorview_motores   enable row level security;
 alter table public.motorview_historial enable row level security;
 alter table public.motorview_reparaciones enable row level security;
+alter table public.motorview_responsables enable row level security;
+alter table public.motorview_solicitudes enable row level security;
 
-revoke all on public.motorview_perfiles, public.motorview_motores, public.motorview_historial, public.motorview_reparaciones from anon, authenticated;
-grant select on public.motorview_perfiles, public.motorview_motores, public.motorview_historial, public.motorview_reparaciones to authenticated;
+revoke all on public.motorview_perfiles, public.motorview_motores, public.motorview_historial, public.motorview_reparaciones,
+              public.motorview_responsables, public.motorview_solicitudes from anon, authenticated;
+grant select on public.motorview_perfiles, public.motorview_motores, public.motorview_historial, public.motorview_reparaciones,
+                public.motorview_responsables, public.motorview_solicitudes to authenticated;
+grant insert (motor_id, faena_destino, motivo) on public.motorview_solicitudes to authenticated;
 grant update (estado, area, observaciones, criticidad, motivo) on public.motorview_motores to authenticated;
 grant insert (motor_id, fecha, tipo, taller, descripcion, resultado) on public.motorview_reparaciones to authenticated;
 revoke all on sequence public.motorview_motores_id_seq from anon, authenticated;
@@ -275,6 +439,21 @@ create policy motorview_reparaciones_agregar on public.motorview_reparaciones
   for insert to authenticated
   with check (public.motorview_rol() in ('admin','mantenimiento'));
 
+drop policy if exists motorview_responsables_ver on public.motorview_responsables;
+create policy motorview_responsables_ver on public.motorview_responsables
+  for select to authenticated
+  using (public.motorview_rol() is not null);
+
+drop policy if exists motorview_solicitudes_ver on public.motorview_solicitudes;
+create policy motorview_solicitudes_ver on public.motorview_solicitudes
+  for select to authenticated
+  using (public.motorview_rol() is not null);
+
+drop policy if exists motorview_solicitudes_agregar on public.motorview_solicitudes;
+create policy motorview_solicitudes_agregar on public.motorview_solicitudes
+  for insert to authenticated
+  with check (public.motorview_rol() in ('admin','mantenimiento'));
+
 -- ============================================================
 -- CÓMO DAR ACCESO A UNA PERSONA
 --
@@ -287,6 +466,15 @@ create policy motorview_reparaciones_agregar on public.motorview_reparaciones
 --    from auth.users where email = 'persona@cmp.cl';
 --
 --    Roles: admin · mantenimiento · consulta
+--
+-- RESPONSABLE DE UNA FAENA (aprueba las solicitudes de motores que están en su faena; puede haber varios):
+--
+--    insert into public.motorview_responsables (faena, user_id)
+--    select 'Planta Magnetita', id from auth.users where email = 'persona@cmp.cl'
+--    on conflict do nothing;
+--
+--    Quitar:  delete from public.motorview_responsables where faena = 'Planta Magnetita'
+--             and user_id = (select id from auth.users where email = 'persona@cmp.cl');
 --    Cambiar rol:  update public.motorview_perfiles set rol = 'consulta' where user_id = (select id from auth.users where email = '...');
 --    Quitar acceso: update public.motorview_perfiles set activo = false where user_id = (select id from auth.users where email = '...');
 --
